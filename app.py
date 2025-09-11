@@ -233,47 +233,53 @@ if uploaded_files:
             club_df = club_df.copy()  # Make a copy to avoid modifying original data
             club_df['Club Shot Number'] = range(1, len(club_df) + 1)
             
-            # Add shot shape classification
-            def classify_shot_shape(row):
-                """Classify shot shape based on sidespin and ball flight"""
-                sidespin = row.get('Sidespin', 0)
-                carry_deviation = row.get('Carry Deviation Angle', 0)
-                
-                if pd.isna(sidespin) or pd.isna(carry_deviation):
-                    return 'Unknown'
-                
-                # Convert to numbers if they're strings
-                try:
-                    sidespin = float(sidespin)
-                    carry_deviation = float(carry_deviation)
-                except (ValueError, TypeError):
-                    return 'Unknown'
-                
-                # Classify based on sidespin and final ball position
-                # Positive sidespin = right spin, negative = left spin
-                # Positive deviation = right of target, negative = left of target
-                
-                if abs(sidespin) < 200 and abs(carry_deviation) < 2:
-                    return 'Straight'
-                elif sidespin > 0:  # Right spin
-                    if carry_deviation > 5:  # Significant right curve
-                        return 'Slice' if sidespin > 800 else 'Fade'
-                    elif carry_deviation < -2:  # Ball curves back left despite right spin
-                        return 'Pull'
-                    else:
-                        return 'Fade'
-                elif sidespin < 0:  # Left spin
-                    if carry_deviation < -5:  # Significant left curve
-                        return 'Hook' if sidespin < -800 else 'Draw'
-                    elif carry_deviation > 2:  # Ball curves back right despite left spin
-                        return 'Push'
-                    else:
-                        return 'Draw'
+            # Show progress for shot shape calculation
+            with st.spinner('🎯 Analyzing shot shapes...'):
+                # Add shot shape classification using vectorized operations (much faster!)
+                if 'Sidespin' in club_df.columns and 'Carry Deviation Angle' in club_df.columns:
+                    # Clean the data first
+                    sidespin = pd.to_numeric(club_df['Sidespin'], errors='coerce')
+                    carry_deviation = pd.to_numeric(club_df['Carry Deviation Angle'], errors='coerce')
+                    
+                    # Initialize with 'Unknown'
+                    shot_shape = pd.Series(['Unknown'] * len(club_df), index=club_df.index)
+                    
+                    # Create boolean masks for each condition (vectorized operations)
+                    valid_data = ~(sidespin.isna() | carry_deviation.isna())
+                    
+                    # Straight shots
+                    straight_mask = valid_data & (sidespin.abs() < 200) & (carry_deviation.abs() < 2)
+                    shot_shape[straight_mask] = 'Straight'
+                    
+                    # Right spin conditions
+                    right_spin = valid_data & (sidespin > 0)
+                    fade_mask = right_spin & (carry_deviation <= 5) & (carry_deviation >= -2)
+                    slice_mask = right_spin & (carry_deviation > 5) & (sidespin > 800)
+                    fade_light_mask = right_spin & (carry_deviation > 5) & (sidespin <= 800)
+                    pull_mask = right_spin & (carry_deviation < -2)
+                    
+                    shot_shape[fade_mask] = 'Fade'
+                    shot_shape[slice_mask] = 'Slice'
+                    shot_shape[fade_light_mask] = 'Fade'
+                    shot_shape[pull_mask] = 'Pull'
+                    
+                    # Left spin conditions  
+                    left_spin = valid_data & (sidespin < 0)
+                    draw_mask = left_spin & (carry_deviation >= -5) & (carry_deviation <= 2)
+                    hook_mask = left_spin & (carry_deviation < -5) & (sidespin < -800)
+                    draw_light_mask = left_spin & (carry_deviation < -5) & (sidespin >= -800)
+                    push_mask = left_spin & (carry_deviation > 2)
+                    
+                    shot_shape[draw_mask] = 'Draw'
+                    shot_shape[hook_mask] = 'Hook'
+                    shot_shape[draw_light_mask] = 'Draw'
+                    shot_shape[push_mask] = 'Push'
+                    
+                    # Assign the vectorized result
+                    club_df['Shot Shape'] = shot_shape
                 else:
-                    return 'Straight'
-            
-            # Apply shot shape classification
-            club_df['Shot Shape'] = club_df.apply(classify_shot_shape, axis=1)
+                    # If required columns don't exist, set all to Unknown
+                    club_df['Shot Shape'] = 'Unknown'
 
         st.subheader(f"📈 Performance Analysis - {title_suffix}")
         
