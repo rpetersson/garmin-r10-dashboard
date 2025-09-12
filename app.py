@@ -1107,11 +1107,11 @@ if uploaded_files:
                                 st.write(f"Data type for {col}: {club_df[col].dtype}")
                                 st.write(f"Sample values: {club_df[col].head()}")
                     
-                    # 3D Ball Speed vs Smash Factor vs Club Speed Analysis
-                    st.subheader("⚡ Ball Speed vs Smash Factor vs Club Speed")
+                    # 3D Carry Distance vs Smash Factor vs Club Speed Analysis
+                    st.subheader("⚡ Carry Distance vs Smash Factor vs Club Speed")
                     
                     # Check if we have all required columns for the 3D chart
-                    required_3d_cols = ['Ball Speed', 'Smash Factor', 'Club Speed']
+                    required_3d_cols = ['Carry Distance', 'Smash Factor', 'Club Speed']
                     available_3d_cols = [col for col in required_3d_cols if col in club_df.columns and club_df[col].notna().any()]
                     
                     if len(available_3d_cols) >= 3:
@@ -1119,29 +1119,40 @@ if uploaded_files:
                             # Create 3D scatter plot
                             fig_3d = go.Figure(data=[go.Scatter3d(
                                 x=club_df['Club Speed'],
-                                y=club_df['Ball Speed'],
+                                y=club_df['Carry Distance'],
                                 z=club_df['Smash Factor'],
                                 mode='markers',
                                 marker=dict(
                                     size=8,
                                     color=club_df['Smash Factor'],
                                     colorscale='Viridis',
-                                    colorbar=dict(title="Smash Factor"),
+                                    colorbar=dict(
+                                        title="Smash Factor",
+                                        tickmode="array",
+                                        tickvals=[0, 0.2, 0.5, 0.8, 1.0, 1.2, 1.3, 1.4, 1.5, 1.7],
+                                        ticktext=["0", "0.2", "0.5", "0.8", "1.0", "1.2", "1.3", "1.4", "1.5", "1.7"]
+                                    ),
+                                    cmin=0,  # Minimum color scale value
+                                    cmax=1.7,  # Maximum color scale value
                                     line=dict(width=0.5, color='DarkSlateGrey')
                                 ),
-                                text=[f'Shot {i+1}<br>Club Speed: {cs:.1f} km/h<br>Ball Speed: {bs:.1f} km/h<br>Smash Factor: {sf:.3f}' 
-                                      for i, (cs, bs, sf) in enumerate(zip(club_df['Club Speed'], 
-                                                                          club_df['Ball Speed'], 
+                                text=[f'Shot {i+1}<br>Club Speed: {cs:.1f} km/h<br>Carry Distance: {cd:.1f} m<br>Smash Factor: {sf:.3f}' 
+                                      for i, (cs, cd, sf) in enumerate(zip(club_df['Club Speed'], 
+                                                                          club_df['Carry Distance'], 
                                                                           club_df['Smash Factor']))],
                                 hovertemplate='%{text}<extra></extra>'
                             )])
                             
                             fig_3d.update_layout(
-                                title=f"3D Analysis: Ball Speed vs Smash Factor vs Club Speed - {title_suffix}",
+                                title=f"3D Analysis: Carry Distance vs Smash Factor vs Club Speed - {title_suffix}",
                                 scene=dict(
                                     xaxis_title='Club Speed (km/h)',
-                                    yaxis_title='Ball Speed (km/h)',
+                                    yaxis_title='Carry Distance (m)',
                                     zaxis_title='Smash Factor',
+                                    zaxis=dict(
+                                        range=[0, 3],  # Fixed scale from 0 to 3
+                                        dtick=0.2  # Tick marks every 0.2
+                                    ),
                                     camera=dict(
                                         eye=dict(x=1.5, y=1.5, z=1.5)
                                     )
@@ -1150,20 +1161,44 @@ if uploaded_files:
                                 margin=dict(l=0, r=0, b=0, t=40)
                             )
                             
+                            # Add a reference plane at the target smash factor of 1.3
+                            # Get the range of club speed and carry distance for the plane
+                            club_speed_range = [club_df['Club Speed'].min(), club_df['Club Speed'].max()]
+                            carry_distance_range = [club_df['Carry Distance'].min(), club_df['Carry Distance'].max()]
+                            
+                            # Create a mesh for the target plane at Z = 1.3
+                            import numpy as np
+                            x_plane = np.linspace(club_speed_range[0], club_speed_range[1], 10)
+                            y_plane = np.linspace(carry_distance_range[0], carry_distance_range[1], 10)
+                            x_mesh, y_mesh = np.meshgrid(x_plane, y_plane)
+                            z_mesh = np.full_like(x_mesh, 1.3)  # Target smash factor plane
+                            
+                            # Add the target plane
+                            fig_3d.add_trace(go.Surface(
+                                x=x_mesh,
+                                y=y_mesh,
+                                z=z_mesh,
+                                opacity=0.3,
+                                colorscale=[[0, 'green'], [1, 'green']],
+                                showscale=False,
+                                name='Target Zone (1.3)',
+                                hovertemplate='Target Smash Factor: 1.3<extra></extra>'
+                            ))
+                            
                             st.plotly_chart(fig_3d, use_container_width=True)
                             
                             # Add insights about the relationship
                             insights_3d_cols = st.columns(2)
                             
                             with insights_3d_cols[0]:
-                                # Calculate correlation between club speed and ball speed
-                                correlation = club_df['Club Speed'].corr(club_df['Ball Speed'])
-                                st.metric("Club Speed ↔ Ball Speed Correlation", f"{correlation:.3f}")
+                                # Calculate correlation between club speed and carry distance
+                                correlation = club_df['Club Speed'].corr(club_df['Carry Distance'])
+                                st.metric("Club Speed ↔ Carry Distance Correlation", f"{correlation:.3f}")
                                 
                                 if correlation > 0.8:
-                                    st.success("🔥 Strong positive correlation - efficient energy transfer!")
+                                    st.success("🔥 Strong positive correlation - efficient power transfer!")
                                 elif correlation > 0.6:
-                                    st.info("👍 Good correlation - room for improvement in efficiency")
+                                    st.info("👍 Good correlation - room for improvement in distance efficiency")
                                 else:
                                     st.warning("⚠️ Weak correlation - focus on strike quality and technique")
                             
@@ -1175,22 +1210,23 @@ if uploaded_files:
                                     
                                     st.metric("Best Smash Factor Shot", f"{optimal_shot['Smash Factor']:.3f}")
                                     st.caption(f"Club Speed: {optimal_shot['Club Speed']:.1f} km/h")
-                                    st.caption(f"Ball Speed: {optimal_shot['Ball Speed']:.1f} km/h")
+                                    st.caption(f"Carry Distance: {optimal_shot['Carry Distance']:.1f} m")
                             
                             # Add explanation
                             st.info("""
                             **💡 Understanding the 3D Relationship:**
-                            - **Higher Club Speed** should generally produce **higher Ball Speed**
-                            - **Smash Factor** (Ball Speed ÷ Club Speed) shows efficiency
+                            - **Higher Club Speed** should generally produce **longer Carry Distance**
+                            - **Smash Factor** shows strike efficiency and affects distance
                             - **Optimal range**: Smash Factor 1.25-1.35 for most clubs
                             - Points higher in the Z-axis (Smash Factor) indicate better strike quality
+                            - **Distance** is the ultimate outcome of good club speed and strike efficiency
                             """)
                             
                         except Exception as e:
                             st.error(f"Error creating 3D chart: {str(e)}")
                             st.write("Available columns:", available_3d_cols)
                     else:
-                        st.warning(f"3D chart requires Ball Speed, Smash Factor, and Club Speed data. Available: {', '.join(available_3d_cols)}")
+                        st.warning(f"3D chart requires Carry Distance, Smash Factor, and Club Speed data. Available: {', '.join(available_3d_cols)}")
                 
                 with tab2:
                     st.subheader("🎯 Accuracy & Consistency Analysis")
