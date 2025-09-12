@@ -1,0 +1,58 @@
+name: Test Docker Build
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'app.py'
+      - '.github/workflows/docker-test.yml'
+
+jobs:
+  test-docker-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        tags: garmin-r10-dashboard:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test container startup
+      run: |
+        # Start the container in detached mode
+        docker run -d --name test-container -p 8501:8501 garmin-r10-dashboard:test
+        
+        # Wait for the container to be ready
+        sleep 30
+        
+        # Test health check endpoint
+        curl -f http://localhost:8501/_stcore/health || exit 1
+        
+        # Clean up
+        docker stop test-container
+        docker rm test-container
+
+    - name: Security scan with Trivy
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'garmin-r10-dashboard:test'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'

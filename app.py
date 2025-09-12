@@ -47,14 +47,24 @@ st.markdown("Upload your Garmin Approach CSV files to analyze golf swing data an
 uploaded_files = st.file_uploader("Choose one or more CSV files", type=["csv"], accept_multiple_files=True)
 
 if uploaded_files:
-    # Load and combine data
+    # Load and combine data directly from uploaded files (no temp file saving)
     dfs = []
-    for file in uploaded_files:
-        df_temp = pd.read_csv(file)
-        df_temp['Source File'] = file.name
-        dfs.append(df_temp)
     
-    df = pd.concat(dfs, ignore_index=True)
+    try:
+        for file in uploaded_files:
+            # Read directly from the uploaded file buffer
+            df_temp = pd.read_csv(file)
+            df_temp['Source File'] = file.name
+            dfs.append(df_temp)
+        
+        df = pd.concat(dfs, ignore_index=True)
+        
+        # Display success message
+        st.success(f"Successfully processed {len(uploaded_files)} file(s)")
+        
+    except Exception as e:
+        st.error(f"Error processing uploaded files: {str(e)}")
+        st.stop()
     
     # Clean numeric columns
     numeric_columns = ['Club Speed', 'Ball Speed', 'Smash Factor', 'Launch Angle', 

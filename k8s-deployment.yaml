@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: garmin-dashboard
+  labels:
+    app: garmin-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: garmin-dashboard
+  template:
+    metadata:
+      labels:
+        app: garmin-dashboard
+    spec:
+      containers:
+      - name: garmin-dashboard
+        image: ghcr.io/rpetersson/garmin-r10-dashboard:latest
+        ports:
+        - containerPort: 8501
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: garmin-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garmin-dashboard-service
+spec:
+  selector:
+    app: garmin-dashboard
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8501
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: garmin-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
