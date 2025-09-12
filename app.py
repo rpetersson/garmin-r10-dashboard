@@ -741,6 +741,231 @@ if uploaded_files:
                                 else:
                                     st.warning(f"⚠️ **Work on shot shape**: {consistency_percentage:.1f}% controlled shots")
                     
+                    # Driving Range Shot Dispersion Visualization
+                    st.subheader("🏌️ Driving Range Shot Dispersion")
+                    
+                    # Check if we have the required data for shot dispersion
+                    required_dispersion_cols = ['Carry Distance', 'Launch Direction']
+                    available_dispersion_cols = [col for col in required_dispersion_cols if col in club_df.columns and club_df[col].notna().any()]
+                    
+                    # Also check for offline distance which gives lateral dispersion
+                    has_offline = 'Offline Distance' in club_df.columns and club_df['Offline Distance'].notna().any()
+                    has_carry_deviation = 'Carry Deviation Distance' in club_df.columns and club_df['Carry Deviation Distance'].notna().any()
+                    
+                    if len(available_dispersion_cols) >= 2 and (has_offline or has_carry_deviation):
+                        try:
+                            # Create driving range visualization
+                            fig_range = go.Figure()
+                            
+                            # Calculate shot positions
+                            carry_distances = club_df['Carry Distance'].dropna()
+                            launch_directions = club_df['Launch Direction'].dropna()
+                            
+                            # Use offline distance if available, otherwise use carry deviation distance
+                            if has_offline:
+                                lateral_distances = club_df['Offline Distance'].dropna()
+                                lateral_col_name = 'Offline Distance'
+                            else:
+                                lateral_distances = club_df['Carry Deviation Distance'].dropna()
+                                lateral_col_name = 'Carry Deviation Distance'
+                            
+                            # Ensure all arrays have the same length
+                            min_length = min(len(carry_distances), len(launch_directions), len(lateral_distances))
+                            if min_length > 0:
+                                carry_distances = carry_distances.iloc[:min_length]
+                                launch_directions = launch_directions.iloc[:min_length]
+                                lateral_distances = lateral_distances.iloc[:min_length]
+                                
+                                # Convert launch direction to radians for calculation
+                                import numpy as np
+                                launch_rad = np.radians(launch_directions)
+                                
+                                # Calculate X,Y positions on the range
+                                # X = lateral position (left/right)
+                                # Y = distance downrange
+                                x_positions = lateral_distances  # Lateral dispersion
+                                y_positions = carry_distances    # Distance downrange
+                                
+                                # Color code by smash factor if available
+                                if 'Smash Factor' in club_df.columns and len(club_df['Smash Factor'].dropna()) >= min_length:
+                                    smash_factors = club_df['Smash Factor'].dropna().iloc[:min_length]
+                                    color_data = smash_factors
+                                    color_title = "Smash Factor"
+                                    colorscale = 'Viridis'
+                                    # Set proper scale for smash factor
+                                    marker_config = dict(
+                                        size=10,
+                                        color=color_data,
+                                        colorscale=colorscale,
+                                        colorbar=dict(
+                                            title=color_title,
+                                            tickmode="array",
+                                            tickvals=[0, 0.5, 1.0, 1.3, 1.5, 1.7],
+                                            ticktext=["0", "0.5", "1.0", "1.3", "1.5", "1.7"]
+                                        ),
+                                        cmin=0,  # Minimum color scale value
+                                        cmax=1.7,  # Maximum color scale value
+                                        line=dict(width=1, color='black')
+                                    )
+                                else:
+                                    color_data = list(range(min_length))
+                                    color_title = "Shot Number"
+                                    colorscale = 'Blues'
+                                    # Default marker config for shot numbers
+                                    marker_config = dict(
+                                        size=10,
+                                        color=color_data,
+                                        colorscale=colorscale,
+                                        colorbar=dict(title=color_title),
+                                        line=dict(width=1, color='black')
+                                    )
+                                
+                                # Add shot scatter plot
+                                fig_range.add_trace(go.Scatter(
+                                    x=x_positions,
+                                    y=y_positions,
+                                    mode='markers',
+                                    marker=marker_config,
+                                    text=[f'Shot {i+1}<br>Distance: {dist:.1f}m<br>Lateral: {lat:.1f}m<br>Direction: {direction:.1f}°' 
+                                          for i, (dist, lat, direction) in enumerate(zip(carry_distances, lateral_distances, launch_directions))],
+                                    hovertemplate='%{text}<extra></extra>',
+                                    name='Shots'
+                                ))
+                                
+                                # Add target line (centerline)
+                                max_distance = max(y_positions) if len(y_positions) > 0 else 200
+                                fig_range.add_trace(go.Scatter(
+                                    x=[0, 0],
+                                    y=[0, max_distance],
+                                    mode='lines',
+                                    line=dict(color='red', width=3, dash='dash'),
+                                    name='Target Line',
+                                    hoverinfo='skip'
+                                ))
+                                
+                                # Add range markers every 50m
+                                range_markers = list(range(50, int(max_distance) + 50, 50))
+                                for distance in range_markers:
+                                    if distance <= max_distance:
+                                        fig_range.add_trace(go.Scatter(
+                                            x=[-50, 50],
+                                            y=[distance, distance],
+                                            mode='lines',
+                                            line=dict(color='lightgray', width=1),
+                                            showlegend=False,
+                                            hoverinfo='skip'
+                                        ))
+                                        # Add distance labels
+                                        fig_range.add_annotation(
+                                            x=0,
+                                            y=distance,
+                                            text=f"{distance}m",
+                                            showarrow=False,
+                                            font=dict(size=10, color='gray'),
+                                            xanchor='center'
+                                        )
+                                
+                                # Calculate dispersion statistics
+                                lateral_std = np.std(x_positions)
+                                distance_std = np.std(y_positions)
+                                avg_distance = np.mean(y_positions)
+                                avg_lateral = np.mean(x_positions)
+                                
+                                # Update layout
+                                fig_range.update_layout(
+                                    title=f"Driving Range Shot Pattern - {title_suffix}",
+                                    xaxis_title=f"Lateral Position ({lateral_col_name}) - meters",
+                                    yaxis_title="Carry Distance - meters",
+                                    xaxis=dict(
+                                        range=[-max(abs(min(x_positions)), abs(max(x_positions))) * 1.2,
+                                               max(abs(min(x_positions)), abs(max(x_positions))) * 1.2],
+                                        zeroline=True,
+                                        zerolinecolor='red',
+                                        zerolinewidth=2,
+                                        showgrid=True,
+                                        gridcolor='lightgray'
+                                    ),
+                                    yaxis=dict(
+                                        range=[0, max_distance * 1.1],
+                                        showgrid=True,
+                                        gridcolor='lightgray'
+                                    ),
+                                    height=600,
+                                    showlegend=True,
+                                    legend=dict(x=0.02, y=0.98)
+                                )
+                                
+                                st.plotly_chart(fig_range, use_container_width=True)
+                                
+                                # Dispersion statistics
+                                dispersion_cols = st.columns(4)
+                                
+                                with dispersion_cols[0]:
+                                    st.metric("Average Distance", f"{avg_distance:.1f}m")
+                                    
+                                with dispersion_cols[1]:
+                                    st.metric("Distance Consistency", f"±{distance_std:.1f}m")
+                                    
+                                with dispersion_cols[2]:
+                                    st.metric("Average Lateral", f"{avg_lateral:+.1f}m")
+                                    
+                                with dispersion_cols[3]:
+                                    st.metric("Lateral Spread", f"±{lateral_std:.1f}m")
+                                
+                                # Dispersion analysis
+                                st.markdown("### 📊 Shot Dispersion Analysis")
+                                
+                                analysis_cols = st.columns(2)
+                                
+                                with analysis_cols[0]:
+                                    # Distance consistency
+                                    if distance_std < 5:
+                                        st.success(f"🎯 **Excellent distance control** - Your shots are very consistent (±{distance_std:.1f}m)")
+                                    elif distance_std < 10:
+                                        st.info(f"👍 **Good distance control** - Solid consistency (±{distance_std:.1f}m)")
+                                    elif distance_std < 15:
+                                        st.warning(f"📊 **Moderate distance control** - Room for improvement (±{distance_std:.1f}m)")
+                                    else:
+                                        st.error(f"⚠️ **Work on distance control** - High variation (±{distance_std:.1f}m)")
+                                
+                                with analysis_cols[1]:
+                                    # Lateral accuracy
+                                    if abs(avg_lateral) < 3 and lateral_std < 8:
+                                        st.success(f"🎯 **Excellent accuracy** - Shots centered and tight (±{lateral_std:.1f}m)")
+                                    elif abs(avg_lateral) < 8 and lateral_std < 15:
+                                        st.info(f"👍 **Good accuracy** - Minor directional tendency ({avg_lateral:+.1f}m)")
+                                    elif abs(avg_lateral) < 15 or lateral_std < 20:
+                                        st.warning(f"📊 **Moderate accuracy** - Work on direction ({avg_lateral:+.1f}m ±{lateral_std:.1f}m)")
+                                    else:
+                                        st.error(f"⚠️ **Work on accuracy** - Significant directional issues ({avg_lateral:+.1f}m ±{lateral_std:.1f}m)")
+                                
+                                # Practice recommendations based on dispersion
+                                st.info(f"""
+                                **🎯 Dispersion Insights:**
+                                - **Your shots cluster around {avg_distance:.0f}m** with ±{distance_std:.1f}m variation
+                                - **Lateral bias**: {avg_lateral:+.1f}m ({'right' if avg_lateral > 0 else 'left' if avg_lateral < 0 else 'centered'})
+                                - **Shot spread**: ±{lateral_std:.1f}m lateral dispersion
+                                - **Target area**: 68% of shots within the displayed pattern
+                                """)
+                            
+                            else:
+                                st.warning("Not enough overlapping data points for dispersion visualization")
+                                
+                        except Exception as e:
+                            st.error(f"Error creating driving range visualization: {str(e)}")
+                            st.write("Available data columns:", list(club_df.columns))
+                    
+                    else:
+                        missing_cols = [col for col in required_dispersion_cols if col not in club_df.columns]
+                        st.info(f"""
+                        **Driving Range Visualization Requirements:**
+                        - ✅ Available: {', '.join(available_dispersion_cols)}
+                        - ❌ Missing: {', '.join(missing_cols)}
+                        - ❌ Need lateral data: {'✅' if has_offline or has_carry_deviation else '❌'} (Offline Distance or Carry Deviation Distance)
+                        
+                        Upload data with Carry Distance, Launch Direction, and Offline Distance to see your shot pattern!
+                        """)
+                    
                     # Detailed Recommendations
                     st.subheader("🎯 Swing Technique Recommendations")
                     
@@ -1150,8 +1375,8 @@ if uploaded_files:
                                     yaxis_title='Carry Distance (m)',
                                     zaxis_title='Smash Factor',
                                     zaxis=dict(
-                                        range=[0, 3],  # Fixed scale from 0 to 3
-                                        dtick=0.2  # Tick marks every 0.2
+                                        range=[0, 1.7],  # Fixed scale from 0 to 1.7
+                                        dtick=0.1  # Tick marks every 0.1
                                     ),
                                     camera=dict(
                                         eye=dict(x=1.5, y=1.5, z=1.5)
@@ -1261,28 +1486,38 @@ if uploaded_files:
                         
                         accuracy_trend_cols = st.columns(2)
                         
-                        # Distance accuracy trend
+                        # Distance accuracy trend (INVERTED: Lower deviation = better accuracy)
                         if 'Carry Deviation Distance' in club_df.columns and club_df['Carry Deviation Distance'].notna().any():
                             with accuracy_trend_cols[0]:
                                 club_df_copy = club_df.copy()
-                                club_df_copy['Distance_Accuracy_Trend'] = club_df_copy['Carry Deviation Distance'].abs().rolling(
+                                # Calculate deviation (lower is better)
+                                raw_deviation = club_df_copy['Carry Deviation Distance'].abs().rolling(
                                     window=window_size, center=True
                                 ).mean()
                                 
+                                # Create accuracy score (higher is better) for visualization
+                                max_deviation = raw_deviation.max() if raw_deviation.max() > 0 else 10
+                                club_df_copy['Distance_Accuracy_Score'] = max_deviation - raw_deviation
+                                
                                 fig = go.Figure()
+                                # Plot accuracy score (higher = better)
                                 fig.add_trace(go.Scatter(
                                     x=club_df_copy['Club Shot Number'],
-                                    y=club_df_copy['Distance_Accuracy_Trend'],
+                                    y=club_df_copy['Distance_Accuracy_Score'],
                                     mode='lines+markers',
-                                    name='Distance Accuracy',
-                                    line=dict(width=3, color='red'),
-                                    marker=dict(size=4)
+                                    name='Distance Accuracy Score',
+                                    line=dict(width=3, color='green'),  # Green for accuracy (higher is better)
+                                    marker=dict(size=4),
+                                    hovertemplate='Shot %{x}<br>Accuracy Score: %{y:.1f}<br>Deviation: %{customdata:.1f}m<extra></extra>',
+                                    customdata=raw_deviation
                                 ))
                                 
-                                # Add trend line
-                                if len(club_df_copy.dropna(subset=['Distance_Accuracy_Trend'])) > 5:
-                                    x_vals = club_df_copy.dropna(subset=['Distance_Accuracy_Trend'])['Club Shot Number']
-                                    y_vals = club_df_copy.dropna(subset=['Distance_Accuracy_Trend'])['Distance_Accuracy_Trend']
+                                # Add trend line for accuracy score
+                                if len(club_df_copy.dropna(subset=['Distance_Accuracy_Score'])) > 5:
+                                    x_vals = club_df_copy.dropna(subset=['Distance_Accuracy_Score'])['Club Shot Number']
+                                    y_vals = club_df_copy.dropna(subset=['Distance_Accuracy_Score'])['Distance_Accuracy_Score']
+                                    raw_vals = club_df_copy.dropna(subset=['Distance_Accuracy_Score'])['Carry Deviation Distance'].abs()
+                                    
                                     z = np.polyfit(x_vals, y_vals, 1)
                                     trend_line = np.poly1d(z)
                                     
@@ -1291,52 +1526,70 @@ if uploaded_files:
                                         y=trend_line(x_vals),
                                         mode='lines',
                                         name='Trend Line',
-                                        line=dict(dash='dash', color='darkred', width=2),
+                                        line=dict(dash='dash', color='darkgreen', width=2),
                                         opacity=0.8
                                     ))
                                     
-                                    # Calculate improvement
+                                    # Calculate improvement (for accuracy score, positive slope = improving)
                                     slope = z[0]
-                                    if slope < 0:
-                                        trend_text = f"📈 Improving: {abs(slope):.2f}m better per shot"
+                                    # Convert back to deviation terms for user understanding
+                                    avg_deviation_start = raw_vals.iloc[:len(raw_vals)//3].mean()
+                                    avg_deviation_end = raw_vals.iloc[-len(raw_vals)//3:].mean()
+                                    deviation_change = avg_deviation_end - avg_deviation_start
+                                    
+                                    if deviation_change < -0.5:  # Deviation decreased = accuracy improved
+                                        trend_text = f"📈 Improving: {abs(deviation_change):.1f}m more accurate"
                                         trend_color = "green"
-                                    else:
-                                        trend_text = f"📉 Declining: {slope:.2f}m worse per shot"
+                                    elif deviation_change > 0.5:  # Deviation increased = accuracy declined
+                                        trend_text = f"📉 Declining: {deviation_change:.1f}m less accurate"
                                         trend_color = "red"
+                                    else:
+                                        trend_text = "📊 Consistent accuracy"
+                                        trend_color = "blue"
                                     
                                     st.markdown(f"<span style='color:{trend_color}'>{trend_text}</span>", unsafe_allow_html=True)
                                 
                                 fig.update_layout(
-                                    title=f"Distance Accuracy Trend (Rolling {window_size}-shot average)",
+                                    title=f"Distance Accuracy Score Trend (Rolling {window_size}-shot average)",
                                     xaxis_title=f"{title_suffix} Shot Number",
-                                    yaxis_title="Average Distance Deviation (m)",
+                                    yaxis_title="Accuracy Score (Higher = Better)",
                                     height=350,
                                     xaxis=get_smart_xaxis_config(len(club_df))  # Smart axis configuration
                                 )
                                 st.plotly_chart(fig, use_container_width=True)
                         
-                        # Direction consistency trend
+                        # Direction consistency trend (INVERTED: Lower std dev = better consistency)
                         if 'Launch Direction' in club_df.columns and club_df['Launch Direction'].notna().any():
                             with accuracy_trend_cols[1]:
                                 club_df_copy = club_df.copy()
-                                club_df_copy['Direction_Consistency_Trend'] = club_df_copy['Launch Direction'].rolling(
+                                # Calculate standard deviation (lower is better)
+                                raw_std = club_df_copy['Launch Direction'].rolling(
                                     window=window_size, center=True
                                 ).std()
                                 
+                                # Create consistency score (higher is better) for visualization
+                                max_std = raw_std.max() if raw_std.max() > 0 else 5
+                                club_df_copy['Direction_Consistency_Score'] = max_std - raw_std
+                                
                                 fig = go.Figure()
+                                # Plot consistency score (higher = better)
                                 fig.add_trace(go.Scatter(
                                     x=club_df_copy['Club Shot Number'],
-                                    y=club_df_copy['Direction_Consistency_Trend'],
+                                    y=club_df_copy['Direction_Consistency_Score'],
                                     mode='lines+markers',
-                                    name='Direction Consistency',
-                                    line=dict(width=3, color='blue'),
-                                    marker=dict(size=4)
+                                    name='Direction Consistency Score',
+                                    line=dict(width=3, color='green'),  # Green for consistency (higher is better)
+                                    marker=dict(size=4),
+                                    hovertemplate='Shot %{x}<br>Consistency Score: %{y:.1f}<br>Std Dev: %{customdata:.1f}°<extra></extra>',
+                                    customdata=raw_std
                                 ))
                                 
-                                # Add trend line
-                                if len(club_df_copy.dropna(subset=['Direction_Consistency_Trend'])) > 5:
-                                    x_vals = club_df_copy.dropna(subset=['Direction_Consistency_Trend'])['Club Shot Number']
-                                    y_vals = club_df_copy.dropna(subset=['Direction_Consistency_Trend'])['Direction_Consistency_Trend']
+                                # Add trend line for consistency score
+                                if len(club_df_copy.dropna(subset=['Direction_Consistency_Score'])) > 5:
+                                    x_vals = club_df_copy.dropna(subset=['Direction_Consistency_Score'])['Club Shot Number']
+                                    y_vals = club_df_copy.dropna(subset=['Direction_Consistency_Score'])['Direction_Consistency_Score']
+                                    raw_vals = club_df_copy.dropna(subset=['Direction_Consistency_Score'])['Launch Direction']
+                                    
                                     z = np.polyfit(x_vals, y_vals, 1)
                                     trend_line = np.poly1d(z)
                                     
@@ -1345,25 +1598,33 @@ if uploaded_files:
                                         y=trend_line(x_vals),
                                         mode='lines',
                                         name='Trend Line',
-                                        line=dict(dash='dash', color='darkblue', width=2),
+                                        line=dict(dash='dash', color='darkgreen', width=2),
                                         opacity=0.8
                                     ))
                                     
-                                    # Calculate improvement (lower is better for consistency)
+                                    # Calculate improvement (for consistency score, positive slope = improving)
                                     slope = z[0]
-                                    if slope < 0:
-                                        trend_text = f"📈 Improving: {abs(slope):.3f}° more consistent per shot"
+                                    # Convert back to standard deviation terms for user understanding
+                                    std_start = raw_vals.iloc[:len(raw_vals)//3].std()
+                                    std_end = raw_vals.iloc[-len(raw_vals)//3:].std()
+                                    std_change = std_end - std_start
+                                    
+                                    if std_change < -0.2:  # Std dev decreased = consistency improved
+                                        trend_text = f"📈 Improving: {abs(std_change):.2f}° more consistent"
                                         trend_color = "green"
-                                    else:
-                                        trend_text = f"📉 Declining: {slope:.3f}° less consistent per shot"
+                                    elif std_change > 0.2:  # Std dev increased = consistency declined
+                                        trend_text = f"📉 Declining: {std_change:.2f}° less consistent"
                                         trend_color = "red"
+                                    else:
+                                        trend_text = "📊 Consistent direction control"
+                                        trend_color = "blue"
                                     
                                     st.markdown(f"<span style='color:{trend_color}'>{trend_text}</span>", unsafe_allow_html=True)
                                 
                                 fig.update_layout(
-                                    title=f"Direction Consistency Trend (Rolling {window_size}-shot std dev)",
+                                    title=f"Direction Consistency Score Trend (Rolling {window_size}-shot average)",
                                     xaxis_title=f"{title_suffix} Shot Number",
-                                    yaxis_title="Direction Standard Deviation (°)",
+                                    yaxis_title="Consistency Score (Higher = Better)",
                                     height=350,
                                     xaxis=get_smart_xaxis_config(len(club_df))  # Smart axis configuration
                                 )
