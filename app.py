@@ -742,7 +742,7 @@ if uploaded_files:
                                     st.warning(f"⚠️ **Work on shot shape**: {consistency_percentage:.1f}% controlled shots")
                     
                     # Detailed Recommendations
-                    st.subheader("🎯 Personalized Recommendations")
+                    st.subheader("🎯 Swing Technique Recommendations")
                     
                     recommendations = []
                     priority_areas = []
@@ -1106,6 +1106,91 @@ if uploaded_files:
                                 st.error(f"Error creating chart for {label}: {str(e)}")
                                 st.write(f"Data type for {col}: {club_df[col].dtype}")
                                 st.write(f"Sample values: {club_df[col].head()}")
+                    
+                    # 3D Ball Speed vs Smash Factor vs Club Speed Analysis
+                    st.subheader("⚡ Ball Speed vs Smash Factor vs Club Speed")
+                    
+                    # Check if we have all required columns for the 3D chart
+                    required_3d_cols = ['Ball Speed', 'Smash Factor', 'Club Speed']
+                    available_3d_cols = [col for col in required_3d_cols if col in club_df.columns and club_df[col].notna().any()]
+                    
+                    if len(available_3d_cols) >= 3:
+                        try:
+                            # Create 3D scatter plot
+                            fig_3d = go.Figure(data=[go.Scatter3d(
+                                x=club_df['Club Speed'],
+                                y=club_df['Ball Speed'],
+                                z=club_df['Smash Factor'],
+                                mode='markers',
+                                marker=dict(
+                                    size=8,
+                                    color=club_df['Smash Factor'],
+                                    colorscale='Viridis',
+                                    colorbar=dict(title="Smash Factor"),
+                                    line=dict(width=0.5, color='DarkSlateGrey')
+                                ),
+                                text=[f'Shot {i+1}<br>Club Speed: {cs:.1f} km/h<br>Ball Speed: {bs:.1f} km/h<br>Smash Factor: {sf:.3f}' 
+                                      for i, (cs, bs, sf) in enumerate(zip(club_df['Club Speed'], 
+                                                                          club_df['Ball Speed'], 
+                                                                          club_df['Smash Factor']))],
+                                hovertemplate='%{text}<extra></extra>'
+                            )])
+                            
+                            fig_3d.update_layout(
+                                title=f"3D Analysis: Ball Speed vs Smash Factor vs Club Speed - {title_suffix}",
+                                scene=dict(
+                                    xaxis_title='Club Speed (km/h)',
+                                    yaxis_title='Ball Speed (km/h)',
+                                    zaxis_title='Smash Factor',
+                                    camera=dict(
+                                        eye=dict(x=1.5, y=1.5, z=1.5)
+                                    )
+                                ),
+                                height=600,
+                                margin=dict(l=0, r=0, b=0, t=40)
+                            )
+                            
+                            st.plotly_chart(fig_3d, use_container_width=True)
+                            
+                            # Add insights about the relationship
+                            insights_3d_cols = st.columns(2)
+                            
+                            with insights_3d_cols[0]:
+                                # Calculate correlation between club speed and ball speed
+                                correlation = club_df['Club Speed'].corr(club_df['Ball Speed'])
+                                st.metric("Club Speed ↔ Ball Speed Correlation", f"{correlation:.3f}")
+                                
+                                if correlation > 0.8:
+                                    st.success("🔥 Strong positive correlation - efficient energy transfer!")
+                                elif correlation > 0.6:
+                                    st.info("👍 Good correlation - room for improvement in efficiency")
+                                else:
+                                    st.warning("⚠️ Weak correlation - focus on strike quality and technique")
+                            
+                            with insights_3d_cols[1]:
+                                # Find the optimal combination
+                                if 'Smash Factor' in club_df.columns:
+                                    max_smash_idx = club_df['Smash Factor'].idxmax()
+                                    optimal_shot = club_df.loc[max_smash_idx]
+                                    
+                                    st.metric("Best Smash Factor Shot", f"{optimal_shot['Smash Factor']:.3f}")
+                                    st.caption(f"Club Speed: {optimal_shot['Club Speed']:.1f} km/h")
+                                    st.caption(f"Ball Speed: {optimal_shot['Ball Speed']:.1f} km/h")
+                            
+                            # Add explanation
+                            st.info("""
+                            **💡 Understanding the 3D Relationship:**
+                            - **Higher Club Speed** should generally produce **higher Ball Speed**
+                            - **Smash Factor** (Ball Speed ÷ Club Speed) shows efficiency
+                            - **Optimal range**: Smash Factor 1.25-1.35 for most clubs
+                            - Points higher in the Z-axis (Smash Factor) indicate better strike quality
+                            """)
+                            
+                        except Exception as e:
+                            st.error(f"Error creating 3D chart: {str(e)}")
+                            st.write("Available columns:", available_3d_cols)
+                    else:
+                        st.warning(f"3D chart requires Ball Speed, Smash Factor, and Club Speed data. Available: {', '.join(available_3d_cols)}")
                 
                 with tab2:
                     st.subheader("🎯 Accuracy & Consistency Analysis")
@@ -1992,7 +2077,7 @@ if uploaded_files:
                 st.plotly_chart(fig_opt, use_container_width=True)
                 
                 # Optimization recommendations
-                st.subheader("🎯 Optimization Recommendations")
+                st.subheader("🎯 Launch Condition Optimization")
                 
                 in_window = opt_df[opt_df['In Window'] == '✅']
                 out_window = opt_df[opt_df['In Window'] == '❌']
