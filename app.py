@@ -1453,6 +1453,214 @@ if uploaded_files:
                         else:
                             st.info("📊 Need at least 2 sessions with data for comparison")
                     
+                    # Enhanced Progress Tracker - Latest vs Previous Sessions
+                    if 'Session' in club_df.columns and club_df['Session'].nunique() >= 2:
+                        st.subheader("📈 Progress Tracker: Latest Session vs Previous Performance")
+                        
+                        # Get all sessions sorted
+                        all_sessions = sorted(club_df['Session'].unique())
+                        latest_session = all_sessions[-1]
+                        previous_sessions = all_sessions[:-1]
+                        
+                        # Get data for latest and previous sessions
+                        latest_data = club_df[club_df['Session'] == latest_session]
+                        previous_data = club_df[club_df['Session'].isin(previous_sessions)]
+                        
+                        if len(latest_data) > 0 and len(previous_data) > 0:
+                            st.info(f"**Latest Session:** {latest_session} ({len(latest_data)} shots) vs **Previous Sessions:** {len(previous_sessions)} sessions ({len(previous_data)} shots)")
+                            
+                            # Calculate comprehensive metrics for comparison
+                            progress_metrics = []
+                            
+                            # Define metrics to track with their optimal directions
+                            metrics_config = [
+                                ('Ball Speed', 'Ball Speed (km/h)', 'higher', '⚡'),
+                                ('Club Speed', 'Club Speed (km/h)', 'higher', '🏌️'),
+                                ('Smash Factor', 'Smash Factor', 'higher', '💥'),
+                                ('Carry Distance', 'Carry Distance (m)', 'higher', '🎯'),
+                                ('Launch Direction', 'Launch Direction Consistency (°)', 'lower', '📍'),
+                                ('Carry Deviation Distance', 'Distance Accuracy (m)', 'lower', '🎪'),
+                                ('Club Path', 'Club Path Consistency (°)', 'lower', '🛤️'),
+                                ('Attack Angle', 'Attack Angle Consistency (°)', 'lower', '📐'),
+                                ('Backspin', 'Backspin (rpm)', 'stable', '🌪️'),
+                                ('Sidespin', 'Sidespin Control (rpm)', 'lower', '↔️')
+                            ]
+                            
+                            for metric, display_name, direction, icon in metrics_config:
+                                if metric in club_df.columns and club_df[metric].notna().any():
+                                    try:
+                                        # Calculate latest session average
+                                        if metric in ['Launch Direction', 'Carry Deviation Distance', 'Club Path', 'Attack Angle']:
+                                            # For these metrics, we want consistency (lower std dev) or absolute values
+                                            if metric == 'Carry Deviation Distance':
+                                                latest_avg = latest_data[metric].abs().mean()
+                                                previous_avg = previous_data[metric].abs().mean()
+                                            elif metric == 'Sidespin':
+                                                latest_avg = latest_data[metric].abs().mean()
+                                                previous_avg = previous_data[metric].abs().mean()
+                                            else:
+                                                latest_avg = latest_data[metric].std()
+                                                previous_avg = previous_data[metric].std()
+                                        else:
+                                            # For other metrics, use mean
+                                            latest_avg = latest_data[metric].mean()
+                                            previous_avg = previous_data[metric].mean()
+                                        
+                                        # Calculate change
+                                        if pd.notna(latest_avg) and pd.notna(previous_avg) and previous_avg != 0:
+                                            change = latest_avg - previous_avg
+                                            change_pct = (change / previous_avg) * 100
+                                            
+                                            # Determine if this is an improvement based on metric type
+                                            if direction == 'higher':
+                                                improved = change > 0
+                                            elif direction == 'lower':
+                                                improved = change < 0
+                                            else:  # stable
+                                                improved = abs(change_pct) < 5  # Within 5% is considered stable/good
+                                            
+                                            progress_metrics.append({
+                                                'Metric': display_name,
+                                                'Icon': icon,
+                                                'Latest': latest_avg,
+                                                'Previous': previous_avg,
+                                                'Change': change,
+                                                'Change %': change_pct,
+                                                'Improved': improved,
+                                                'Direction': direction
+                                            })
+                                    except Exception as e:
+                                        continue  # Skip metrics that can't be calculated
+                            
+                            if progress_metrics:
+                                # Create progress summary
+                                improved_count = sum(1 for m in progress_metrics if m['Improved'])
+                                total_count = len(progress_metrics)
+                                improvement_rate = (improved_count / total_count) * 100
+                                
+                                # Overall progress indicator
+                                progress_cols = st.columns([1, 2, 1])
+                                with progress_cols[1]:
+                                    if improvement_rate >= 70:
+                                        st.success(f"🔥 **Excellent Progress!** Improved in {improved_count}/{total_count} metrics ({improvement_rate:.0f}%)")
+                                    elif improvement_rate >= 50:
+                                        st.info(f"👍 **Good Progress!** Improved in {improved_count}/{total_count} metrics ({improvement_rate:.0f}%)")
+                                    elif improvement_rate >= 30:
+                                        st.warning(f"📊 **Mixed Results** - Improved in {improved_count}/{total_count} metrics ({improvement_rate:.0f}%)")
+                                    else:
+                                        st.error(f"⚠️ **Focus Needed** - Improved in {improved_count}/{total_count} metrics ({improvement_rate:.0f}%)")
+                                
+                                # Detailed metrics comparison
+                                st.markdown("### 📊 Detailed Metrics Comparison")
+                                
+                                # Split into improved and needs work
+                                improved_metrics = [m for m in progress_metrics if m['Improved']]
+                                declined_metrics = [m for m in progress_metrics if not m['Improved']]
+                                
+                                comparison_cols = st.columns(2)
+                                
+                                with comparison_cols[0]:
+                                    if improved_metrics:
+                                        st.markdown("#### ✅ **Improvements**")
+                                        for metric in improved_metrics:
+                                            with st.expander(f"{metric['Icon']} {metric['Metric']}", expanded=False):
+                                                col1, col2, col3 = st.columns(3)
+                                                with col1:
+                                                    st.metric("Latest", f"{metric['Latest']:.2f}")
+                                                with col2:
+                                                    st.metric("Previous", f"{metric['Previous']:.2f}")
+                                                with col3:
+                                                    change_sign = "+" if metric['Change'] > 0 else ""
+                                                    st.metric("Change", f"{change_sign}{metric['Change']:.2f}", f"{metric['Change %']:+.1f}%")
+                                    else:
+                                        st.markdown("#### ✅ **Improvements**")
+                                        st.info("No improvements detected in this session")
+                                
+                                with comparison_cols[1]:
+                                    if declined_metrics:
+                                        st.markdown("#### 🎯 **Areas to Focus On**")
+                                        for metric in declined_metrics:
+                                            with st.expander(f"{metric['Icon']} {metric['Metric']}", expanded=False):
+                                                col1, col2, col3 = st.columns(3)
+                                                with col1:
+                                                    st.metric("Latest", f"{metric['Latest']:.2f}")
+                                                with col2:
+                                                    st.metric("Previous", f"{metric['Previous']:.2f}")
+                                                with col3:
+                                                    change_sign = "+" if metric['Change'] > 0 else ""
+                                                    st.metric("Change", f"{change_sign}{metric['Change']:.2f}", f"{metric['Change %']:+.1f}%")
+                                    else:
+                                        st.markdown("#### 🎯 **Areas to Focus On**")
+                                        st.success("All metrics improved or stayed stable!")
+                                
+                                # Progress trend visualization
+                                st.markdown("### 📈 Progress Trends")
+                                
+                                # Create a progress chart showing the key metrics
+                                if len(progress_metrics) >= 3:
+                                    # Select top metrics for visualization
+                                    key_metrics = progress_metrics[:6]  # Show top 6 metrics
+                                    
+                                    fig_progress = go.Figure()
+                                    
+                                    # Add bars for each metric
+                                    metric_names = [m['Metric'].split('(')[0].strip() for m in key_metrics]
+                                    changes = [m['Change %'] for m in key_metrics]
+                                    colors = ['green' if m['Improved'] else 'red' for m in key_metrics]
+                                    
+                                    fig_progress.add_trace(go.Bar(
+                                        x=metric_names,
+                                        y=changes,
+                                        marker_color=colors,
+                                        text=[f"{change:+.1f}%" for change in changes],
+                                        textposition='auto',
+                                        hovertemplate='<b>%{x}</b><br>Change: %{y:.1f}%<extra></extra>'
+                                    ))
+                                    
+                                    fig_progress.update_layout(
+                                        title="Latest Session vs Previous Sessions - Key Metrics Change (%)",
+                                        xaxis_title="Metrics",
+                                        yaxis_title="Change (%)",
+                                        height=400,
+                                        showlegend=False
+                                    )
+                                    
+                                    # Add a horizontal line at 0%
+                                    fig_progress.add_hline(y=0, line_dash="dash", line_color="gray")
+                                    
+                                    st.plotly_chart(fig_progress, use_container_width=True)
+                                
+                                # Session progression recommendations
+                                st.markdown("### 💡 **Session Recommendations**")
+                                
+                                if improvement_rate >= 70:
+                                    st.success("""
+                                    **Keep up the excellent work!** You're showing strong improvement across most metrics.
+                                    - Continue your current practice routine
+                                    - Focus on maintaining consistency in improved areas
+                                    - Consider recording video to analyze your improved technique
+                                    """)
+                                elif improvement_rate >= 50:
+                                    st.info("""
+                                    **Good progress overall!** You're improving in most areas.
+                                    - Focus extra practice time on the declining metrics
+                                    - Consider working with a coach on specific weaknesses
+                                    - Keep track of what's working for your improved metrics
+                                    """)
+                                else:
+                                    st.warning("""
+                                    **Time to reassess your approach.**
+                                    - Consider taking a lesson to identify fundamental issues
+                                    - Focus on one or two key metrics rather than trying to fix everything
+                                    - Review your setup and basic fundamentals
+                                    - Take notes on what feels different in your swing
+                                    """)
+                            
+                            else:
+                                st.info("📊 Unable to calculate progress metrics - insufficient data")
+                        else:
+                            st.info("📊 Need data in both latest and previous sessions for comparison")
+                    
                     # Deviation plots
                     st.subheader("📊 Accuracy Distribution Analysis")
                     deviation_stats = [
