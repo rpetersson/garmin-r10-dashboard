@@ -44,26 +44,131 @@ st.set_page_config(page_title="Garmin Approach Dashboard", layout="wide")
 st.title("🏌️ Garmin Approach Dashboard")
 st.markdown("Upload your Garmin Approach CSV files to analyze golf swing data and visualize performance trends.")
 
+# Add file upload tips
+with st.expander("📁 File Upload Tips", expanded=False):
+    st.markdown("""
+    **For best results:**
+    - Upload CSV files one at a time if you experience issues with multiple files
+    - Ensure files are properly formatted CSV exports from Garmin devices
+    - File size limit: 1GB per file
+    - Supported encodings: UTF-8, Latin-1
+    
+    **Common issues:**
+    - Empty files or files with only headers
+    - Corrupted CSV files
+    - Files with non-standard encoding
+    """)
+
 uploaded_files = st.file_uploader("Choose one or more CSV files", type=["csv"], accept_multiple_files=True)
 
 if uploaded_files:
+    # Validate file sizes first
+    oversized_files = []
+    for file in uploaded_files:
+        file_size_mb = len(file.getvalue()) / (1024 * 1024)
+        if file_size_mb > 100:  # 100MB warning threshold
+            oversized_files.append(f"{file.name} ({file_size_mb:.1f}MB)")
+    
+    if oversized_files:
+        st.warning(f"⚠️ Large files detected: {', '.join(oversized_files)}")
+        st.info("Large files may take longer to process. Consider uploading files individually.")
+    
+    # Show upload progress
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
     # Load and combine data directly from uploaded files (no temp file saving)
     dfs = []
+    successful_files = []
+    failed_files = []
     
     try:
-        for file in uploaded_files:
-            # Read directly from the uploaded file buffer
-            df_temp = pd.read_csv(file)
-            df_temp['Source File'] = file.name
-            dfs.append(df_temp)
+        total_files = len(uploaded_files)
         
+        for i, file in enumerate(uploaded_files):
+            # Update progress
+            progress = (i + 1) / total_files
+            progress_bar.progress(progress)
+            status_text.text(f"Processing file {i+1} of {total_files}: {file.name}")
+            
+            try:
+                # Reset file pointer to beginning
+                file.seek(0)
+                
+                # Read directly from the uploaded file buffer with error handling
+                df_temp = pd.read_csv(file, encoding='utf-8')
+                
+                # Validate that the file has data
+                if df_temp.empty:
+                    failed_files.append(f"{file.name} (empty file)")
+                    continue
+                
+                # Validate essential columns exist
+                essential_columns = ['Club Type', 'Carry Distance']
+                missing_cols = [col for col in essential_columns if col not in df_temp.columns]
+                if missing_cols:
+                    failed_files.append(f"{file.name} (missing columns: {', '.join(missing_cols)})")
+                    continue
+                
+                # Add source file column
+                df_temp['Source File'] = file.name
+                dfs.append(df_temp)
+                successful_files.append(file.name)
+                
+            except UnicodeDecodeError:
+                # Try different encoding
+                try:
+                    file.seek(0)
+                    df_temp = pd.read_csv(file, encoding='latin-1')
+                    if not df_temp.empty:
+                        df_temp['Source File'] = file.name
+                        dfs.append(df_temp)
+                        successful_files.append(file.name)
+                    else:
+                        failed_files.append(f"{file.name} (empty file)")
+                except Exception as e:
+                    failed_files.append(f"{file.name} (encoding error: {str(e)[:50]})")
+                    
+            except pd.errors.EmptyDataError:
+                failed_files.append(f"{file.name} (empty or invalid CSV)")
+                
+            except pd.errors.ParserError as e:
+                failed_files.append(f"{file.name} (CSV format error)")
+                
+            except Exception as e:
+                failed_files.append(f"{file.name} (error: {str(e)[:50]})")
+        
+        # Clear progress indicators
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Check if we have any successful files
+        if not dfs:
+            st.error("❌ No files could be processed successfully!")
+            if failed_files:
+                st.error("Failed files:")
+                for failed_file in failed_files:
+                    st.write(f"• {failed_file}")
+            st.stop()
+        
+        # Combine successful dataframes
         df = pd.concat(dfs, ignore_index=True)
         
-        # Display success message
-        st.success(f"Successfully processed {len(uploaded_files)} file(s)")
+        # Display success/warning messages
+        if len(successful_files) == total_files:
+            st.success(f"✅ Successfully processed all {len(successful_files)} file(s)")
+        else:
+            st.warning(f"⚠️ Processed {len(successful_files)} of {total_files} files")
+            st.success(f"✅ Successfully processed: {', '.join(successful_files)}")
+            if failed_files:
+                st.error(f"❌ Failed to process: {', '.join(failed_files)}")
+        
+        # Show data summary
+        st.info(f"📊 Combined dataset: {len(df)} rows, {len(df.columns)} columns from {len(successful_files)} file(s)")
         
     except Exception as e:
-        st.error(f"Error processing uploaded files: {str(e)}")
+        st.error(f"❌ Critical error during file processing: {str(e)}")
+        st.error("This might be due to incompatible file formats or corrupted data.")
         st.stop()
     
     # Clean numeric columns
@@ -1679,9 +1784,297 @@ if uploaded_files:
                             st.markdown(rec)
                     else:
                         st.info("Environmental data will help optimize your club selection for different conditions")
-    else:
-        st.error("No club type data found in the uploaded files.")
+    
+    # Add Advanced Golf Analytics Section
+    st.markdown("---")
+    st.header("🎯 Advanced Golf Analytics")
+    
+    # Advanced Analytics Functions
+    def calculate_strokes_gained(df):
+        """Calculate strokes gained based on distance to pin"""
+        # PGA Tour benchmark distances for strokes gained
+        pga_benchmarks = {
+            'Driver': {'avg_distance': 285, 'fairway_pct': 0.62},
+            'Wood': {'avg_distance': 245, 'fairway_pct': 0.72},
+            'Hybrid': {'avg_distance': 220, 'fairway_pct': 0.78},
+            'Long Iron': {'avg_distance': 195, 'fairway_pct': 0.82},
+            'Mid Iron': {'avg_distance': 165, 'fairway_pct': 0.85},
+            'Short Iron': {'avg_distance': 135, 'fairway_pct': 0.88},
+            'Wedge': {'avg_distance': 95, 'fairway_pct': 0.92}
+        }
+        
+        strokes_gained = []
+        for _, row in df.iterrows():
+            club_type = row.get('Club Type', 'Mid Iron')
+            carry_distance = row.get('Carry Distance', 0)
+            
+            if club_type in pga_benchmarks:
+                benchmark = pga_benchmarks[club_type]['avg_distance']
+                # Simple strokes gained calculation
+                sg = (carry_distance - benchmark) / 20  # Rough approximation
+                strokes_gained.append(max(-2, min(2, sg)))  # Cap at +/- 2 strokes
+            else:
+                strokes_gained.append(0)
+        
+        return strokes_gained
+
+    def analyze_launch_conditions(df):
+        """Analyze optimal launch conditions for each club"""
+        if 'Launch Angle' not in df.columns or 'Carry Distance' not in df.columns:
+            return None
+        
+        # Optimal launch windows by club type
+        optimal_windows = {
+            'Driver': {'launch_angle': (10, 14), 'spin_rate': (2000, 2800)},
+            'Wood': {'launch_angle': (12, 16), 'spin_rate': (3000, 4000)},
+            'Hybrid': {'launch_angle': (14, 18), 'spin_rate': (4000, 5500)},
+            'Long Iron': {'launch_angle': (16, 20), 'spin_rate': (5500, 7000)},
+            'Mid Iron': {'launch_angle': (18, 22), 'spin_rate': (6500, 8000)},
+            'Short Iron': {'launch_angle': (20, 25), 'spin_rate': (7500, 9500)},
+            'Wedge': {'launch_angle': (22, 28), 'spin_rate': (8500, 11000)}
+        }
+        
+        results = {}
+        for club_type in df['Club Type'].unique():
+            if pd.isna(club_type):
+                continue
+                
+            club_data = df[df['Club Type'] == club_type]
+            if len(club_data) < 3:
+                continue
+                
+            avg_launch = club_data['Launch Angle'].mean()
+            avg_spin = club_data['Spin Rate'].mean() if 'Spin Rate' in club_data.columns else None
+            avg_distance = club_data['Carry Distance'].mean()
+            
+            # Check if in optimal window
+            optimal = optimal_windows.get(club_type, {'launch_angle': (15, 20), 'spin_rate': (5000, 8000)})
+            launch_optimal = optimal['launch_angle'][0] <= avg_launch <= optimal['launch_angle'][1]
+            
+            results[club_type] = {
+                'avg_launch': avg_launch,
+                'avg_spin': avg_spin,
+                'avg_distance': avg_distance,
+                'launch_optimal': launch_optimal,
+                'optimal_range': optimal
+            }
+        
+        return results
+
+    def calculate_dispersion_metrics(df):
+        """Calculate shot dispersion and consistency metrics"""
+        if 'Carry Deviation Distance' not in df.columns:
+            return None
+        
+        metrics = {}
+        for club_type in df['Club Type'].unique():
+            if pd.isna(club_type):
+                continue
+                
+            club_data = df[df['Club Type'] == club_type]
+            if len(club_data) < 5:
+                continue
+                
+            # Calculate dispersion metrics
+            lateral_std = club_data['Carry Deviation Distance'].std()
+            distance_std = club_data['Carry Distance'].std()
+            
+            # Consistency score (lower is better)
+            consistency_score = (lateral_std + distance_std) / 2
+            
+            metrics[club_type] = {
+                'lateral_dispersion': lateral_std,
+                'distance_dispersion': distance_std,
+                'consistency_score': consistency_score,
+                'shot_count': len(club_data)
+            }
+        
+        return metrics
+    
+    # Strokes Gained Analysis
+    with st.expander("📊 Strokes Gained Analysis", expanded=False):
+        st.markdown("""
+        **Strokes Gained** measures your performance relative to PGA Tour benchmarks.
+        Positive values mean you're performing better than tour average, negative means room for improvement.
+        """)
+        
+        strokes_gained = calculate_strokes_gained(df)
+        df_sg = df.copy()
+        df_sg['Strokes Gained'] = strokes_gained
+        
+        # Strokes gained by club
+        sg_by_club = df_sg.groupby('Club Type')['Strokes Gained'].agg(['mean', 'count']).reset_index()
+        sg_by_club = sg_by_club[sg_by_club['count'] >= 3]  # Only clubs with 3+ shots
+        
+        if not sg_by_club.empty:
+            fig_sg = px.bar(
+                sg_by_club, 
+                x='Club Type', 
+                y='mean',
+                title="Average Strokes Gained by Club Type",
+                color='mean',
+                color_continuous_scale=['red', 'yellow', 'green'],
+                labels={'mean': 'Avg Strokes Gained'}
+            )
+            fig_sg.add_hline(y=0, line_dash="dash", line_color="black", 
+                           annotation_text="Tour Average")
+            st.plotly_chart(fig_sg, use_container_width=True)
+            
+            # Summary insights
+            best_club = sg_by_club.loc[sg_by_club['mean'].idxmax(), 'Club Type']
+            worst_club = sg_by_club.loc[sg_by_club['mean'].idxmin(), 'Club Type']
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Best Performing Club", best_club, 
+                         f"+{sg_by_club['mean'].max():.2f} strokes")
+            with col2:
+                st.metric("Improvement Opportunity", worst_club, 
+                         f"{sg_by_club['mean'].min():.2f} strokes")
+    
+    # Launch Condition Optimization
+    with st.expander("🚀 Launch Condition Optimization", expanded=False):
+        st.markdown("""
+        **Launch Conditions** determine ball flight and distance. Each club has an optimal launch window
+        for maximum efficiency and distance.
+        """)
+        
+        launch_analysis = analyze_launch_conditions(df)
+        
+        if launch_analysis:
+            # Create optimization chart
+            optimization_data = []
+            for club, data in launch_analysis.items():
+                optimization_data.append({
+                    'Club Type': club,
+                    'Current Launch Angle': data['avg_launch'],
+                    'Optimal Min': data['optimal_range']['launch_angle'][0],
+                    'Optimal Max': data['optimal_range']['launch_angle'][1],
+                    'Distance': data['avg_distance'],
+                    'In Window': '✅' if data['launch_optimal'] else '❌'
+                })
+            
+            opt_df = pd.DataFrame(optimization_data)
+            
+            if not opt_df.empty:
+                # Launch angle optimization chart
+                fig_opt = go.Figure()
+                
+                # Add optimal ranges as rectangles
+                for _, row in opt_df.iterrows():
+                    fig_opt.add_shape(
+                        type="rect",
+                        x0=row['Club Type'], x1=row['Club Type'],
+                        y0=row['Optimal Min'], y1=row['Optimal Max'],
+                        fillcolor="lightgreen", opacity=0.3,
+                        line=dict(width=0)
+                    )
+                
+                # Add current launch angles
+                fig_opt.add_trace(go.Scatter(
+                    x=opt_df['Club Type'],
+                    y=opt_df['Current Launch Angle'],
+                    mode='markers',
+                    marker=dict(size=12, color=opt_df['Distance'], 
+                              colorscale='viridis', showscale=True,
+                              colorbar=dict(title="Distance (m)")),
+                    text=opt_df['In Window'],
+                    name='Current Launch Angle'
+                ))
+                
+                fig_opt.update_layout(
+                    title="Launch Angle Optimization by Club",
+                    xaxis_title="Club Type",
+                    yaxis_title="Launch Angle (degrees)",
+                    showlegend=True
+                )
+                
+                st.plotly_chart(fig_opt, use_container_width=True)
+                
+                # Optimization recommendations
+                st.subheader("🎯 Optimization Recommendations")
+                
+                in_window = opt_df[opt_df['In Window'] == '✅']
+                out_window = opt_df[opt_df['In Window'] == '❌']
+                
+                if not in_window.empty:
+                    st.success(f"✅ **Clubs in optimal window:** {', '.join(in_window['Club Type'])}")
+                
+                if not out_window.empty:
+                    st.warning(f"❌ **Clubs needing adjustment:** {', '.join(out_window['Club Type'])}")
+                    
+                    for _, row in out_window.iterrows():
+                        current = row['Current Launch Angle']
+                        optimal_min = row['Optimal Min']
+                        optimal_max = row['Optimal Max']
+                        
+                        if current < optimal_min:
+                            advice = f"Increase launch angle by {optimal_min - current:.1f}°"
+                        else:
+                            advice = f"Decrease launch angle by {current - optimal_max:.1f}°"
+                        
+                        st.info(f"**{row['Club Type']}:** {advice}")
+    
+    # Shot Dispersion Analysis
+    with st.expander("🎯 Shot Dispersion & Consistency", expanded=False):
+        st.markdown("""
+        **Shot Dispersion** measures how consistent your shots are. Lower dispersion = more consistent.
+        This helps identify which clubs you can trust and which need more practice.
+        """)
+        
+        dispersion_metrics = calculate_dispersion_metrics(df)
+        
+        if dispersion_metrics:
+            # Create dispersion comparison
+            disp_data = []
+            for club, metrics in dispersion_metrics.items():
+                disp_data.append({
+                    'Club Type': club,
+                    'Lateral Dispersion (m)': metrics['lateral_dispersion'],
+                    'Distance Dispersion (m)': metrics['distance_dispersion'],
+                    'Consistency Score': metrics['consistency_score'],
+                    'Shot Count': metrics['shot_count']
+                })
+            
+            disp_df = pd.DataFrame(disp_data)
+            
+            if not disp_df.empty:
+                # Consistency ranking
+                disp_df_sorted = disp_df.sort_values('Consistency Score')
+                
+                fig_disp = px.scatter(
+                    disp_df,
+                    x='Lateral Dispersion (m)',
+                    y='Distance Dispersion (m)',
+                    size='Shot Count',
+                    color='Consistency Score',
+                    hover_name='Club Type',
+                    title="Shot Dispersion by Club Type",
+                    color_continuous_scale='RdYlGn_r'  # Red = inconsistent, Green = consistent
+                )
+                
+                st.plotly_chart(fig_disp, use_container_width=True)
+                
+                # Consistency rankings
+                st.subheader("📊 Consistency Rankings")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Most Consistent Clubs:**")
+                    for i, (_, row) in enumerate(disp_df_sorted.head(3).iterrows(), 1):
+                        st.write(f"{i}. {row['Club Type']} (Score: {row['Consistency Score']:.1f})")
+                
+                with col2:
+                    st.markdown("**Clubs Needing Practice:**")
+                    for i, (_, row) in enumerate(disp_df_sorted.tail(3).iterrows(), 1):
+                        st.write(f"{i}. {row['Club Type']} (Score: {row['Consistency Score']:.1f})")
+
 else:
+    st.error("No club type data found in the uploaded files.")
+
+# If no files uploaded, show instructions
+if not uploaded_files:
     st.info("Please upload one or more CSV files to get started.")
     
     # Show sample data structure
