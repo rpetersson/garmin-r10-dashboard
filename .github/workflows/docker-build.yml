@@ -106,9 +106,29 @@ jobs:
           echo "Updating garmin-dashboard deployment image..."
           k3s kubectl set image deployment/garmin-dashboard garmin-dashboard=${{ env.IMAGE_NAME }}:${{ github.sha }} -n robert-prod
           
-          # Wait for rollout to complete
-          echo "Waiting for rollout..."
-          k3s kubectl rollout status deployment/garmin-dashboard -n robert-prod
+          # Check deployment status before waiting
+          echo "Current deployment status:"
+          k3s kubectl get deployment garmin-dashboard -n robert-prod
+          
+          # Wait for rollout to complete with extended timeout
+          echo "Waiting for rollout (timeout: 10 minutes)..."
+          if k3s kubectl rollout status deployment/garmin-dashboard -n robert-prod --timeout=600s; then
+            echo "✅ Rollout completed successfully"
+          else
+            echo "❌ Rollout failed or timed out. Checking pod status..."
+            
+            # Get detailed pod information
+            echo "Pod status:"
+            k3s kubectl get pods -l app=garmin-dashboard -n robert-prod -o wide
+            
+            echo "Pod events:"
+            k3s kubectl get events -n robert-prod --sort-by='.lastTimestamp' | tail -10
+            
+            echo "Pod logs (if any pods exist):"
+            k3s kubectl logs -l app=garmin-dashboard -n robert-prod --tail=50 || echo "No logs available"
+            
+            exit 1
+          fi
           
           # Verify the deployment
           echo "Verifying deployment..."
