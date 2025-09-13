@@ -2605,6 +2605,146 @@ if uploaded_files:
                         
                         st.info(f"**{row['Club Type']}:** {advice}")
     
+    # Club Performance Summary
+    with st.expander("🏆 Club Performance Summary", expanded=True):
+        st.markdown("""
+        **Your Best Clubs** - Analysis across all your clubs to identify strengths and preferences.
+        """)
+        
+        if 'Club Type' in df.columns and df['Club Type'].nunique() > 1:
+            club_summary = []
+            
+            for club_type in df['Club Type'].unique():
+                if pd.isna(club_type):
+                    continue
+                    
+                club_data = df[df['Club Type'] == club_type]
+                if len(club_data) < 3:  # Need at least 3 shots for meaningful analysis
+                    continue
+                
+                # Calculate key metrics
+                metrics = {
+                    'Club Type': club_type,
+                    'Shot Count': len(club_data)
+                }
+                
+                # Distance performance
+                if 'Carry Distance' in club_data.columns and club_data['Carry Distance'].notna().any():
+                    metrics['Avg Distance'] = club_data['Carry Distance'].mean()
+                    metrics['Distance Consistency'] = club_data['Carry Distance'].std()
+                
+                # Direction accuracy
+                if 'Launch Direction' in club_data.columns and club_data['Launch Direction'].notna().any():
+                    metrics['Direction Accuracy'] = club_data['Launch Direction'].std()
+                    straight_shots = club_data[club_data['Launch Direction'].abs() <= 5]
+                    metrics['Straight Shot %'] = (len(straight_shots) / len(club_data)) * 100
+                
+                # Strike efficiency
+                if 'Smash Factor' in club_data.columns and club_data['Smash Factor'].notna().any():
+                    metrics['Avg Smash Factor'] = club_data['Smash Factor'].mean()
+                    optimal_shots = club_data[(club_data['Smash Factor'] >= 1.25) & (club_data['Smash Factor'] <= 1.35)]
+                    metrics['Optimal Strike %'] = (len(optimal_shots) / len(club_data)) * 100
+                
+                club_summary.append(metrics)
+            
+            if club_summary:
+                club_summary_df = pd.DataFrame(club_summary)
+                
+                # Create summary metrics
+                summary_cols = st.columns(3)
+                
+                with summary_cols[0]:
+                    st.markdown("#### 🎯 **Most Consistent Club**")
+                    if 'Distance Consistency' in club_summary_df.columns:
+                        most_consistent = club_summary_df.loc[club_summary_df['Distance Consistency'].idxmin()]
+                        st.metric("Club", most_consistent['Club Type'])
+                        st.metric("Distance Spread", f"±{most_consistent['Distance Consistency']:.1f}m")
+                        if 'Shot Count' in most_consistent:
+                            st.caption(f"Based on {most_consistent['Shot Count']} shots")
+                        st.success("💡 **Use this club** when you need predictable distance control!")
+                
+                with summary_cols[1]:
+                    st.markdown("#### 🚀 **Best Distance Club**")
+                    if 'Avg Distance' in club_summary_df.columns:
+                        # Find best distance relative to club type (avoid comparing driver to wedge)
+                        # For now, just show absolute best, but could be improved with club-type weighting
+                        best_distance = club_summary_df.loc[club_summary_df['Avg Distance'].idxmax()]
+                        st.metric("Club", best_distance['Club Type'])
+                        st.metric("Avg Carry", f"{best_distance['Avg Distance']:.1f}m")
+                        if 'Shot Count' in best_distance:
+                            st.caption(f"Based on {best_distance['Shot Count']} shots")
+                        st.success("💡 **This club** gives you maximum distance!")
+                
+                with summary_cols[2]:
+                    st.markdown("#### 🎯 **Most Accurate Club**")
+                    if 'Direction Accuracy' in club_summary_df.columns:
+                        most_accurate = club_summary_df.loc[club_summary_df['Direction Accuracy'].idxmin()]
+                        st.metric("Club", most_accurate['Club Type'])
+                        st.metric("Direction Spread", f"±{most_accurate['Direction Accuracy']:.1f}°")
+                        if 'Straight Shot %' in most_accurate:
+                            st.metric("Straight Shots", f"{most_accurate['Straight Shot %']:.1f}%")
+                        if 'Shot Count' in most_accurate:
+                            st.caption(f"Based on {most_accurate['Shot Count']} shots")
+                        st.success("💡 **Go with this club** when accuracy is critical!")
+                
+                # Additional insights
+                st.markdown("---")
+                st.markdown("#### 📊 **Club Performance Overview**")
+                
+                # Create a comprehensive table
+                display_df = club_summary_df.copy()
+                if 'Avg Distance' in display_df.columns:
+                    display_df['Avg Distance'] = display_df['Avg Distance'].round(1)
+                if 'Distance Consistency' in display_df.columns:
+                    display_df['Distance Consistency'] = display_df['Distance Consistency'].round(1)
+                if 'Direction Accuracy' in display_df.columns:
+                    display_df['Direction Accuracy'] = display_df['Direction Accuracy'].round(1)
+                if 'Straight Shot %' in display_df.columns:
+                    display_df['Straight Shot %'] = display_df['Straight Shot %'].round(1)
+                if 'Avg Smash Factor' in display_df.columns:
+                    display_df['Avg Smash Factor'] = display_df['Avg Smash Factor'].round(3)
+                if 'Optimal Strike %' in display_df.columns:
+                    display_df['Optimal Strike %'] = display_df['Optimal Strike %'].round(1)
+                
+                st.dataframe(display_df, use_container_width=True)
+                
+                # Performance recommendations
+                st.markdown("#### 💡 **Personalized Recommendations**")
+                
+                recommendations = []
+                
+                # Find clubs that need work
+                if 'Direction Accuracy' in club_summary_df.columns:
+                    worst_accuracy = club_summary_df.loc[club_summary_df['Direction Accuracy'].idxmax()]
+                    if worst_accuracy['Direction Accuracy'] > 15:
+                        recommendations.append(
+                            f"🎯 **Work on {worst_accuracy['Club Type']} accuracy** - Direction spread of ±{worst_accuracy['Direction Accuracy']:.1f}° suggests alignment practice needed"
+                        )
+                
+                if 'Distance Consistency' in club_summary_df.columns:
+                    worst_consistency = club_summary_df.loc[club_summary_df['Distance Consistency'].idxmax()]
+                    if worst_consistency['Distance Consistency'] > 20:
+                        recommendations.append(
+                            f"📏 **Improve {worst_consistency['Club Type']} consistency** - Distance spread of ±{worst_consistency['Distance Consistency']:.1f}m indicates tempo/contact work needed"
+                        )
+                
+                if 'Avg Smash Factor' in club_summary_df.columns:
+                    low_smash = club_summary_df[club_summary_df['Avg Smash Factor'] < 1.20]
+                    if not low_smash.empty:
+                        worst_smash = low_smash.loc[low_smash['Avg Smash Factor'].idxmin()]
+                        recommendations.append(
+                            f"⚡ **Focus on {worst_smash['Club Type']} strike quality** - Smash factor of {worst_smash['Avg Smash Factor']:.3f} suggests contact improvement needed"
+                        )
+                
+                if recommendations:
+                    for rec in recommendations[:3]:  # Show top 3 recommendations
+                        st.warning(rec)
+                else:
+                    st.success("🎉 **Excellent performance across all clubs!** Your consistency and accuracy are solid.")
+        
+        else:
+            st.info("Upload data with multiple club types to see your club performance summary.")
+
     # Shot Dispersion Analysis
     with st.expander("🎯 Shot Dispersion & Consistency", expanded=False):
         st.markdown("""
