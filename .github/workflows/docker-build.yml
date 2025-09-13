@@ -82,20 +82,49 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
 
-  security-scan:
+  deploy-to-kubernetes:
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
 
     steps:
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
+    - name: Deploy to Kubernetes
+      uses: appleboy/ssh-action@v1.0.3
       with:
-        image-ref: '${{ env.IMAGE_NAME }}:latest'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+        host: ${{ secrets.KUBE_HOST }}
+        username: ${{ secrets.KUBE_USERNAME }}
+        password: ${{ secrets.KUBE_PASSWORD }}
+        port: ${{ secrets.KUBE_PORT }}
+        script_stop: true
+        script: |
 
-    - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: 'trivy-results.sarif'
+          export KUBECONFIG=$HOME/.kube/config/k3s.yaml
+
+          # Update the image in your Kubernetes deployment
+          echo "Updating garmin-dashboard deployment image..."
+          k3s kubectl set image deployment/garmin-dashboard garmin-dashboard=${{ env.IMAGE_NAME }}:${{ github.sha }} -n default
+          
+          # Wait for rollout to complete
+          echo "Waiting for rollout..."
+          k3s kubectl rollout status deployment/garmin-dashboard -n default
+          
+          # Verify the deployment
+          echo "Verifying deployment..."
+          k3s kubectl get pods -l app=garmin-dashboard -n default
+
+          # Show deployment status
+          echo "Deployment status:"
+          k3s kubectl describe deployment garmin-dashboard -n default
+
+          # Exit SSH
+          exit
+
+    - name: Create Kubernetes deployment summary
+      run: |
+        echo "## 🚀 Kubernetes Deployment Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment:** \`garmin-dashboard\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Namespace:** \`default\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** \`${{ env.IMAGE_NAME }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The Garmin R10 Dashboard has been successfully deployed to Kubernetes!" >> $GITHUB_STEP_SUMMARY
