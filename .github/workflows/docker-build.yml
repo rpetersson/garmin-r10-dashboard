@@ -98,6 +98,15 @@ jobs:
         script_stop: true
         script: |
 
+          # Debug: Check file system and permissions
+          echo "=== Debugging KUBECONFIG ==="
+          echo "HOME directory: $HOME"
+          ls -la $HOME/.kube/ || echo "No .kube directory found"
+          ls -la $HOME/.kube/config/ || echo "No config directory found"
+          ls -la $HOME/.kube/config/k3s.yaml || echo "No k3s.yaml file found"
+          whoami
+          echo "=== End Debug ==="
+
           export KUBECONFIG=$HOME/.kube/config/k3s.yaml
 
           # Update the image in your Kubernetes deployment
