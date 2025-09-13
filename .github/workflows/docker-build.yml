@@ -98,25 +98,17 @@ jobs:
         script_stop: true
         script: |
 
-          # Verify SSH connection and server details
-          echo "=== SSH Connection Verification ==="
-          echo "Connected to server: $(hostname)"
-          echo "Current user: $(whoami)"
-          echo "Current directory: $(pwd)"
-          echo "Server uptime: $(uptime)"
-          echo "Date: $(date)"
-          echo "=== End SSH Verification ==="
-
-          # Debug: Check file system and permissions
-          echo "=== Debugging KUBECONFIG ==="
-          echo "HOME directory: $HOME"
-          ls -la $HOME/.kube/ || echo "No .kube directory found"
-          ls -la $HOME/.kube/config/ || echo "No config directory found"
-          ls -la $HOME/.kube/config/k3s.yaml || echo "No k3s.yaml file found"
-          whoami
-          echo "=== End Debug ==="
-
+          # Set KUBECONFIG and verify it's accessible
           export KUBECONFIG=$HOME/.kube/config/k3s.yaml
+          echo "KUBECONFIG set to: $KUBECONFIG"
+          
+          # Verify the config file is readable
+          if [ -f "$KUBECONFIG" ]; then
+            echo "✅ Config file exists and is readable"
+          else
+            echo "❌ Config file not found or not readable"
+            exit 1
+          fi
 
           # Update the image in your Kubernetes deployment
           echo "Updating garmin-dashboard deployment image..."
