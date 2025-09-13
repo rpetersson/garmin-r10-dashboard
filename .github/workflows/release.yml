@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  packages: read
 
 jobs:
   create-release:
@@ -45,18 +44,11 @@ jobs:
         body: |
           # Garmin R10 Dashboard ${{ github.ref_name }}
           
-          ## 📦 Docker Images
+          ## 📦 Docker Image
           
-          **Docker Hub:**
           ```bash
           docker pull tristar86/garmin-r10-dashboard:${{ github.ref_name }}
           docker pull tristar86/garmin-r10-dashboard:latest
-          ```
-          
-          **GitHub Container Registry:**
-          ```bash
-          docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-          docker pull ghcr.io/${{ github.repository }}:latest
           ```
           
           ## 🚀 Quick Start
@@ -65,11 +57,8 @@ jobs:
           # Using Docker Compose
           curl -sL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml | docker-compose -f - up -d
           
-          # Using Docker directly (Docker Hub)
+          # Using Docker directly
           docker run -d -p 8501:8501 -v $(pwd)/data:/app/data tristar86/garmin-r10-dashboard:${{ github.ref_name }}
-          
-          # Using Docker directly (GitHub Container Registry)
-          docker run -d -p 8501:8501 -v $(pwd)/data:/app/data ghcr.io/${{ github.repository }}:${{ github.ref_name }}
           ```
           
           Access the dashboard at http://localhost:8501
@@ -87,50 +76,3 @@ jobs:
           
         draft: false
         prerelease: false
-
-  docker-build-push:
-    runs-on: ubuntu-latest
-    needs: create-release
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: tristar86/garmin-r10-dashboard
-        tags: |
-          type=ref,event=tag
-          type=raw,value=latest
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-
-  update-package-readme:
-    runs-on: ubuntu-latest
-    needs: create-release
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Update package description
-      run: |
-        # This will update the package description in GitHub Packages
-        echo "Package updated for release ${{ github.ref_name }}"
