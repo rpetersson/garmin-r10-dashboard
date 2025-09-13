@@ -102,19 +102,19 @@ jobs:
 
           # Update the image in your Kubernetes deployment
           echo "Updating garmin-dashboard deployment image..."
-          k3s kubectl set image deployment/garmin-dashboard garmin-dashboard=${{ env.IMAGE_NAME }}:${{ github.sha }} -n default
+          k3s kubectl set image deployment/garmin-dashboard garmin-dashboard=${{ env.IMAGE_NAME }}:${{ github.sha }} -n robert-prod
           
           # Wait for rollout to complete
           echo "Waiting for rollout..."
-          k3s kubectl rollout status deployment/garmin-dashboard -n default
+          k3s kubectl rollout status deployment/garmin-dashboard -n robert-prod
           
           # Verify the deployment
           echo "Verifying deployment..."
-          k3s kubectl get pods -l app=garmin-dashboard -n default
+          k3s kubectl get pods -l app=garmin-dashboard -n robert-prod
 
           # Show deployment status
           echo "Deployment status:"
-          k3s kubectl describe deployment garmin-dashboard -n default
+          k3s kubectl describe deployment garmin-dashboard -n robert-prod
 
           # Exit SSH
           exit
