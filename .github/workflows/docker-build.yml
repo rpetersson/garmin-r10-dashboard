@@ -98,6 +98,15 @@ jobs:
         script_stop: true
         script: |
 
+          # Verify SSH connection and server details
+          echo "=== SSH Connection Verification ==="
+          echo "Connected to server: $(hostname)"
+          echo "Current user: $(whoami)"
+          echo "Current directory: $(pwd)"
+          echo "Server uptime: $(uptime)"
+          echo "Date: $(date)"
+          echo "=== End SSH Verification ==="
+
           # Debug: Check file system and permissions
           echo "=== Debugging KUBECONFIG ==="
           echo "HOME directory: $HOME"
