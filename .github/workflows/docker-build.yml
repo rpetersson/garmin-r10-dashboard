@@ -101,14 +101,6 @@ jobs:
           # Set KUBECONFIG and verify it's accessible
           export KUBECONFIG=$HOME/.kube/config/k3s.yaml
           echo "KUBECONFIG set to: $KUBECONFIG"
-          
-          # Verify the config file is readable
-          if [ -f "$KUBECONFIG" ]; then
-            echo "✅ Config file exists and is readable"
-          else
-            echo "❌ Config file not found or not readable"
-            exit 1
-          fi
 
           # Update the image in your Kubernetes deployment
           echo "Updating garmin-dashboard deployment image..."
