@@ -92,7 +92,7 @@ jobs:
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.KUBE_HOST }}
-        username: ${{ secrets.KUBE_USERNAME }}
+        username: gh-action
         password: ${{ secrets.KUBE_PASSWORD }}
         port: ${{ secrets.KUBE_PORT }}
         script_stop: true
