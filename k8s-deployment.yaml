@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: garmin-dashboard
-        image: ghcr.io/rpetersson/garmin-r10-dashboard:latest
+        image: tristar86/garmin-r10-dashboard:latest
         ports:
         - containerPort: 8501
         volumeMounts:
