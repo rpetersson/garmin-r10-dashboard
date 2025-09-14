@@ -1611,6 +1611,16 @@ if uploaded_files:
                 with tab2:
                     st.subheader("🎯 Accuracy & Consistency Analysis")
                     
+                    # Add shot shape reference image
+                    try:
+                        st.image("assets/shotshape.png", 
+                               caption="Shot Shape Reference Guide - Understanding Your Ball Flight Patterns", 
+                               use_column_width=True)
+                        st.markdown("---")  # Add a separator line
+                    except Exception as e:
+                        # If image fails to load, continue without it
+                        pass
+                    
                     # Accuracy metrics
                     accuracy_cols = st.columns(3)
                     
