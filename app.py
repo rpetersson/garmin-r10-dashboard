@@ -5,6 +5,47 @@ import plotly.graph_objects as go
 import numpy as np
 from scipy import stats
 
+# Unit conversion functions
+def convert_speed_to_usa(kmh_value):
+    """Convert km/h to mph"""
+    if pd.isna(kmh_value):
+        return kmh_value
+    return kmh_value * 0.621371
+
+def convert_distance_to_usa(meter_value):
+    """Convert meters to yards"""
+    if pd.isna(meter_value):
+        return meter_value
+    return meter_value * 1.09361
+
+def format_speed_metric(value, use_usa_units=False):
+    """Format speed value with appropriate units"""
+    if pd.isna(value):
+        return "N/A"
+    if use_usa_units:
+        converted_value = convert_speed_to_usa(value)
+        return f"{converted_value:.1f} mph"
+    else:
+        return f"{value:.1f} km/h"
+
+def format_distance_metric(value, use_usa_units=False):
+    """Format distance value with appropriate units"""
+    if pd.isna(value):
+        return "N/A"
+    if use_usa_units:
+        converted_value = convert_distance_to_usa(value)
+        return f"{converted_value:.1f} yd"
+    else:
+        return f"{value:.1f}m"
+
+def get_speed_unit_label(use_usa_units=False):
+    """Get the speed unit label for charts"""
+    return "mph" if use_usa_units else "km/h"
+
+def get_distance_unit_label(use_usa_units=False):
+    """Get the distance unit label for charts"""
+    return "yards" if use_usa_units else "meters"
+
 # Helper function for smart x-axis tick spacing
 def get_smart_dtick(num_shots):
     """Calculate appropriate tick spacing based on number of shots"""
@@ -237,7 +278,21 @@ if uploaded_files:
         club_list = []
     
     if club_list:
-        selected_club = st.selectbox("Select Club Type", ["All Clubs"] + club_list)
+        # Create two columns for club selection and units selection
+        col_club, col_units = st.columns([2, 1])
+        
+        with col_club:
+            selected_club = st.selectbox("Select Club Type", ["All Clubs"] + club_list)
+        
+        with col_units:
+            # Units selection
+            use_usa_units = st.radio(
+                "Units",
+                options=[False, True],
+                format_func=lambda x: "🇺🇸 USA (mph, yards)" if x else "🌐 Metric (km/h, meters)",
+                index=0,
+                key="units_selection"
+            )
         
         if selected_club == "All Clubs":
             club_df = df
@@ -433,7 +488,7 @@ if uploaded_files:
                     trend_text = ""
                 
                 with metrics_cols[0]:
-                    st.metric("Avg Carry Distance", f"{avg_distance:.1f}m")
+                    st.metric("Avg Carry Distance", format_distance_metric(avg_distance, use_usa_units))
                     if trend_text:
                         st.markdown(f"<span style='color:{trend_color}'>{trend_arrow} {trend_text}</span>", unsafe_allow_html=True)
             
@@ -448,7 +503,7 @@ if uploaded_files:
             if 'Club Speed' in club_df.columns and club_df['Club Speed'].notna().any():
                 avg_club_speed = club_df['Club Speed'].mean()
                 with metrics_cols[2]:
-                    st.metric("Avg Club Speed", f"{avg_club_speed:.1f} km/h")
+                    st.metric("Avg Club Speed", format_speed_metric(avg_club_speed, use_usa_units))
             
             if 'Total Distance' in club_df.columns and club_df['Total Distance'].notna().any():
                 avg_total_distance = club_df['Total Distance'].mean()
@@ -479,7 +534,7 @@ if uploaded_files:
                     total_text = ""
                 
                 with metrics_cols[3]:
-                    st.metric("Avg Total Distance", f"{avg_total_distance:.1f}m")
+                    st.metric("Avg Total Distance", format_distance_metric(avg_total_distance, use_usa_units))
                     if total_text:
                         st.markdown(f"<span style='color:{total_color}'>{total_arrow} {total_text}</span>", unsafe_allow_html=True)
             elif 'Launch Angle' in club_df.columns and club_df['Launch Angle'].notna().any():
@@ -487,15 +542,15 @@ if uploaded_files:
                 with metrics_cols[3]:
                     st.metric("Avg Launch Angle", f"{avg_launch:.1f}°")
 
-            # Performance trends
+            # Performance trends with dynamic units
             trend_stats = [
-                ('Club Speed', 'Club Speed', 'km/h'),
-                ('Ball Speed', 'Ball Speed', 'km/h'),
+                ('Club Speed', 'Club Speed', get_speed_unit_label(use_usa_units)),
+                ('Ball Speed', 'Ball Speed', get_speed_unit_label(use_usa_units)),
                 ('Smash Factor', 'Smash Factor', ''),
                 ('Launch Angle', 'Launch Angle', '°'),
                 ('Attack Angle', 'Attack Angle', '°'),
-                ('Carry Distance', 'Carry Distance', 'm'),
-                ('Total Distance', 'Total Distance', 'm'),
+                ('Carry Distance', 'Carry Distance', get_distance_unit_label(use_usa_units)),
+                ('Total Distance', 'Total Distance', get_distance_unit_label(use_usa_units)),
             ]
             
             # Create subplot layout
@@ -776,6 +831,11 @@ if uploaded_files:
                                 launch_directions = launch_directions.iloc[:min_length]
                                 lateral_distances = lateral_distances.iloc[:min_length]
                                 
+                                # Apply unit conversion if using USA units
+                                if use_usa_units:
+                                    carry_distances = carry_distances.apply(convert_distance_to_usa)
+                                    lateral_distances = lateral_distances.apply(convert_distance_to_usa)
+                                
                                 # Convert launch direction to radians for calculation
                                 import numpy as np
                                 launch_rad = np.radians(launch_directions)
@@ -826,7 +886,7 @@ if uploaded_files:
                                     y=y_positions,
                                     mode='markers',
                                     marker=marker_config,
-                                    text=[f'Shot {i+1}<br>Distance: {dist:.1f}m<br>Lateral: {lat:.1f}m<br>Direction: {direction:.1f}°' 
+                                    text=[f'Shot {i+1}<br>Distance: {dist:.1f}{get_distance_unit_label(use_usa_units)}<br>Lateral: {lat:.1f}{get_distance_unit_label(use_usa_units)}<br>Direction: {direction:.1f}°' 
                                           for i, (dist, lat, direction) in enumerate(zip(carry_distances, lateral_distances, launch_directions))],
                                     hovertemplate='%{text}<extra></extra>',
                                     name='Shots'
@@ -874,8 +934,8 @@ if uploaded_files:
                                 # Update layout
                                 fig_range.update_layout(
                                     title=f"Driving Range Shot Pattern - {title_suffix}",
-                                    xaxis_title=f"Lateral Position ({lateral_col_name}) - meters",
-                                    yaxis_title="Carry Distance - meters",
+                                    xaxis_title=f"Lateral Position ({lateral_col_name}) - {get_distance_unit_label(use_usa_units)}",
+                                    yaxis_title=f"Carry Distance - {get_distance_unit_label(use_usa_units)}",
                                     xaxis=dict(
                                         range=[-max(abs(min(x_positions)), abs(max(x_positions))) * 1.2,
                                                max(abs(min(x_positions)), abs(max(x_positions))) * 1.2],
@@ -901,16 +961,36 @@ if uploaded_files:
                                 dispersion_cols = st.columns(4)
                                 
                                 with dispersion_cols[0]:
-                                    st.metric("Average Distance", f"{avg_distance:.1f}m")
+                                    # Apply unit conversion to average distance
+                                    avg_distance_display = avg_distance
+                                    if use_usa_units:
+                                        avg_distance_display = avg_distance * 1.09361  # Convert to yards
+                                    distance_unit = get_distance_unit_label(use_usa_units)
+                                    st.metric("Average Distance", f"{avg_distance_display:.1f}{distance_unit}")
                                     
                                 with dispersion_cols[1]:
-                                    st.metric("Distance Consistency", f"±{distance_std:.1f}m")
+                                    # Apply unit conversion to distance consistency
+                                    distance_std_display = distance_std
+                                    if use_usa_units:
+                                        distance_std_display = distance_std * 1.09361  # Convert to yards
+                                    distance_unit = get_distance_unit_label(use_usa_units)
+                                    st.metric("Distance Consistency", f"±{distance_std_display:.1f}{distance_unit}")
                                     
                                 with dispersion_cols[2]:
-                                    st.metric("Average Lateral", f"{avg_lateral:+.1f}m")
+                                    # Apply unit conversion to lateral average
+                                    avg_lateral_display = avg_lateral
+                                    if use_usa_units:
+                                        avg_lateral_display = avg_lateral * 1.09361  # Convert to yards
+                                    distance_unit = get_distance_unit_label(use_usa_units)
+                                    st.metric("Average Lateral", f"{avg_lateral_display:+.1f}{distance_unit}")
                                     
                                 with dispersion_cols[3]:
-                                    st.metric("Lateral Spread", f"±{lateral_std:.1f}m")
+                                    # Apply unit conversion to lateral spread
+                                    lateral_std_display = lateral_std
+                                    if use_usa_units:
+                                        lateral_std_display = lateral_std * 1.09361  # Convert to yards
+                                    distance_unit = get_distance_unit_label(use_usa_units)
+                                    st.metric("Lateral Spread", f"±{lateral_std_display:.1f}{distance_unit}")
                                 
                                 # Dispersion analysis
                                 st.markdown("### 📊 Shot Dispersion Analysis")
@@ -1178,10 +1258,18 @@ if uploaded_files:
                             try:
                                 fig = go.Figure()
                                 
+                                # Apply unit conversion for chart data if needed
+                                y_data = club_df[col].copy()
+                                if use_usa_units:
+                                    if col in ['Club Speed', 'Ball Speed']:
+                                        y_data = y_data.apply(convert_speed_to_usa)
+                                    elif col in ['Carry Distance', 'Total Distance']:
+                                        y_data = y_data.apply(convert_distance_to_usa)
+                                
                                 # Add trend line
                                 fig.add_trace(go.Scatter(
                                     x=club_df['Club Shot Number'],
-                                    y=club_df[col],
+                                    y=y_data,
                                     mode='lines+markers',
                                     name=label,
                                     line=dict(width=2),
@@ -1259,51 +1347,110 @@ if uploaded_files:
                                         fig.add_hline(y=120, line_dash="dot", line_color="blue", opacity=0.5,
                                                     annotation_text="Average 7-Iron Speed", annotation_position="bottom right")
                                 
-                                # Add trend analysis for distance metrics
-                                if col in ['Carry Distance', 'Total Distance'] and len(club_df) >= 10:
-                                    # Calculate trend line
+                                # Add comprehensive trend analysis for all key performance metrics
+                                trend_metrics = ['Carry Distance', 'Total Distance', 'Club Speed', 'Ball Speed', 'Smash Factor', 'Launch Angle', 'Attack Angle']
+                                if col in trend_metrics and len(club_df) >= 10:
+                                    # Calculate trend line using original metric values (before unit conversion)
                                     x_vals = club_df['Club Shot Number']
-                                    y_vals = club_df[col].dropna()
+                                    y_vals_original = club_df[col].dropna()  # Use original values for calculation
                                     x_vals_clean = x_vals[club_df[col].notna()]
                                     
-                                    if len(y_vals) >= 5:
-                                        z = np.polyfit(x_vals_clean, y_vals, 1)
-                                        trend_line = np.poly1d(z)
+                                    if len(y_vals_original) >= 5:
+                                        z = np.polyfit(x_vals_clean, y_vals_original, 1)
+                                        trend_line_original = np.poly1d(z)
+                                        
+                                        # Convert trend line to display units if needed
+                                        if use_usa_units and col in ['Club Speed', 'Ball Speed']:
+                                            trend_line_display = trend_line_original(x_vals_clean).apply(convert_speed_to_usa)
+                                        elif use_usa_units and col in ['Carry Distance', 'Total Distance']:
+                                            trend_line_display = trend_line_original(x_vals_clean).apply(convert_distance_to_usa)
+                                        else:
+                                            trend_line_display = trend_line_original(x_vals_clean)
                                         
                                         # Add subtle trend line
                                         fig.add_trace(go.Scatter(
                                             x=x_vals_clean,
-                                            y=trend_line(x_vals_clean),
+                                            y=trend_line_display,
                                             mode='lines',
                                             name='Overall Trend',
                                             line=dict(dash='dot', color='red', width=1),
                                             opacity=0.6
                                         ))
                                         
-                                        # Calculate trend direction
-                                        slope = z[0]
-                                        if slope > 1:  # Improving by more than 1m per shot
-                                            trend_emoji = "📈"
-                                            trend_color = "green"
-                                        elif slope < -1:  # Declining by more than 1m per shot
-                                            trend_emoji = "📉"
-                                            trend_color = "red"
-                                        else:
-                                            trend_emoji = "➡️"
-                                            trend_color = "blue"
+                                        # Calculate trend direction with metric-specific thresholds
+                                        slope = z[0]  # Use original slope for calculations
                                         
-                                        # Add trend annotation
-                                        fig.add_annotation(
-                                            x=x_vals_clean.iloc[-1],
-                                            y=trend_line(x_vals_clean.iloc[-1]),
-                                            text=f"{trend_emoji} {slope:.1f}m/shot",
-                                            showarrow=True,
-                                            arrowhead=2,
-                                            arrowsize=1,
-                                            arrowwidth=2,
-                                            arrowcolor=trend_color,
-                                            font=dict(color=trend_color, size=12)
-                                        )
+                                        # Define improvement thresholds for each metric
+                                        if col in ['Carry Distance', 'Total Distance']:
+                                            threshold = 1  # 1m per shot
+                                            unit_display = "m" if not use_usa_units else "yd"
+                                            slope_display = slope if not use_usa_units else slope * 1.09361  # Convert to yards
+                                        elif col == 'Club Speed':
+                                            threshold = 0.5  # 0.5 km/h per shot
+                                            unit_display = "km/h" if not use_usa_units else "mph"
+                                            slope_display = slope if not use_usa_units else slope * 0.621371  # Convert to mph
+                                        elif col == 'Ball Speed':
+                                            threshold = 0.8  # 0.8 km/h per shot
+                                            unit_display = "km/h" if not use_usa_units else "mph"
+                                            slope_display = slope if not use_usa_units else slope * 0.621371  # Convert to mph
+                                        elif col == 'Smash Factor':
+                                            threshold = 0.002  # 0.002 per shot
+                                            unit_display = ""
+                                            slope_display = slope
+                                        elif col == 'Launch Angle':
+                                            threshold = 0.1  # 0.1° per shot
+                                            unit_display = "°"
+                                            slope_display = slope
+                                        elif col == 'Attack Angle':
+                                            # For attack angle, negative slope might be good for irons, positive for driver
+                                            threshold = 0.1  # 0.1° per shot
+                                            unit_display = "°"
+                                            slope_display = slope
+                                        
+                                        # Determine trend direction and color
+                                        if col == 'Attack Angle' and any(iron in title_suffix for iron in ['Iron', '7 Iron', '6 Iron', '8 Iron', '9 Iron']):
+                                            # For irons, more negative attack angle is better (hitting down)
+                                            if slope < -threshold:
+                                                trend_emoji = "📈"
+                                                trend_color = "green"
+                                            elif slope > threshold:
+                                                trend_emoji = "📉"
+                                                trend_color = "red"
+                                            else:
+                                                trend_emoji = "➡️"
+                                                trend_color = "blue"
+                                        else:
+                                            # For most metrics, positive slope is improvement
+                                            if slope > threshold:
+                                                trend_emoji = "📈"
+                                                trend_color = "green"
+                                            elif slope < -threshold:
+                                                trend_emoji = "📉"
+                                                trend_color = "red"
+                                            else:
+                                                trend_emoji = "➡️"
+                                                trend_color = "blue"
+                                        
+                                        # Add trend annotation with appropriate formatting
+                                        if abs(slope_display) >= 0.01 or col in ['Carry Distance', 'Total Distance']:
+                                            if col == 'Smash Factor':
+                                                trend_text = f"{trend_emoji} {slope_display:+.3f}/shot"
+                                            elif col in ['Launch Angle', 'Attack Angle']:
+                                                trend_text = f"{trend_emoji} {slope_display:+.2f}{unit_display}/shot"
+                                            else:
+                                                trend_text = f"{trend_emoji} {slope_display:+.1f}{unit_display}/shot"
+                                            
+                                            fig.add_annotation(
+                                                x=x_vals_clean.iloc[-1],
+                                                y=trend_line_display.iloc[-1] if hasattr(trend_line_display, 'iloc') else trend_line_display[-1],
+                                                text=trend_text,
+                                                showarrow=True,
+                                                arrowhead=2,
+                                                arrowsize=1,
+                                                arrowwidth=2,
+                                                arrowcolor=trend_color,
+                                                font=dict(color=trend_color, size=12)
+                                            )
                                 
                                 fig.update_layout(
                                     title=f"{label} Trend Over Time",
@@ -1341,10 +1488,18 @@ if uploaded_files:
                     
                     if len(available_3d_cols) >= 3:
                         try:
+                            # Apply unit conversions for 3D chart data
+                            club_speed_3d = club_df['Club Speed'].copy()
+                            carry_distance_3d = club_df['Carry Distance'].copy()
+                            
+                            if use_usa_units:
+                                club_speed_3d = club_speed_3d.apply(convert_speed_to_usa)
+                                carry_distance_3d = carry_distance_3d.apply(convert_distance_to_usa)
+                            
                             # Create 3D scatter plot
                             fig_3d = go.Figure(data=[go.Scatter3d(
-                                x=club_df['Club Speed'],
-                                y=club_df['Carry Distance'],
+                                x=club_speed_3d,
+                                y=carry_distance_3d,
                                 z=club_df['Smash Factor'],
                                 mode='markers',
                                 marker=dict(
@@ -1361,9 +1516,9 @@ if uploaded_files:
                                     cmax=1.7,  # Maximum color scale value
                                     line=dict(width=0.5, color='DarkSlateGrey')
                                 ),
-                                text=[f'Shot {i+1}<br>Club Speed: {cs:.1f} km/h<br>Carry Distance: {cd:.1f} m<br>Smash Factor: {sf:.3f}' 
-                                      for i, (cs, cd, sf) in enumerate(zip(club_df['Club Speed'], 
-                                                                          club_df['Carry Distance'], 
+                                text=[f'Shot {i+1}<br>Club Speed: {cs:.1f} {get_speed_unit_label(use_usa_units)}<br>Carry Distance: {cd:.1f} {get_distance_unit_label(use_usa_units)}<br>Smash Factor: {sf:.3f}' 
+                                      for i, (cs, cd, sf) in enumerate(zip(club_speed_3d, 
+                                                                          carry_distance_3d, 
                                                                           club_df['Smash Factor']))],
                                 hovertemplate='%{text}<extra></extra>'
                             )])
@@ -1371,8 +1526,8 @@ if uploaded_files:
                             fig_3d.update_layout(
                                 title=f"3D Analysis: Carry Distance vs Smash Factor vs Club Speed - {title_suffix}",
                                 scene=dict(
-                                    xaxis_title='Club Speed (km/h)',
-                                    yaxis_title='Carry Distance (m)',
+                                    xaxis_title=f'Club Speed ({get_speed_unit_label(use_usa_units)})',
+                                    yaxis_title=f'Carry Distance ({get_distance_unit_label(use_usa_units)})',
                                     zaxis_title='Smash Factor',
                                     zaxis=dict(
                                         range=[0, 1.7],  # Fixed scale from 0 to 1.7
@@ -1463,7 +1618,11 @@ if uploaded_files:
                     if 'Carry Deviation Distance' in club_df.columns and club_df['Carry Deviation Distance'].notna().any():
                         with accuracy_cols[0]:
                             avg_deviation = club_df['Carry Deviation Distance'].abs().mean()
-                            st.metric("Avg Distance Deviation", f"{avg_deviation:.1f}m")
+                            # Apply unit conversion to average deviation
+                            if use_usa_units:
+                                avg_deviation = avg_deviation * 1.09361  # Convert to yards
+                            distance_unit = get_distance_unit_label(use_usa_units)
+                            st.metric("Avg Distance Deviation", f"{avg_deviation:.1f}{distance_unit}")
                     
                     # Direction accuracy
                     if 'Launch Direction' in club_df.columns and club_df['Launch Direction'].notna().any():
@@ -2633,6 +2792,13 @@ if uploaded_files:
                     metrics['Avg Distance'] = club_data['Carry Distance'].mean()
                     metrics['Distance Consistency'] = club_data['Carry Distance'].std()
                 
+                # Speed performance
+                if 'Club Speed' in club_data.columns and club_data['Club Speed'].notna().any():
+                    metrics['Avg Club Speed'] = club_data['Club Speed'].mean()
+                    
+                if 'Ball Speed' in club_data.columns and club_data['Ball Speed'].notna().any():
+                    metrics['Avg Ball Speed'] = club_data['Ball Speed'].mean()
+                
                 # Direction accuracy
                 if 'Launch Direction' in club_data.columns and club_data['Launch Direction'].notna().any():
                     metrics['Direction Accuracy'] = club_data['Launch Direction'].std()
@@ -2658,7 +2824,12 @@ if uploaded_files:
                     if 'Distance Consistency' in club_summary_df.columns:
                         most_consistent = club_summary_df.loc[club_summary_df['Distance Consistency'].idxmin()]
                         st.metric("Club", most_consistent['Club Type'])
-                        st.metric("Distance Spread", f"±{most_consistent['Distance Consistency']:.1f}m")
+                        # Apply unit conversion to distance consistency
+                        consistency_value = most_consistent['Distance Consistency']
+                        if use_usa_units:
+                            consistency_value = consistency_value * 1.09361  # Convert to yards
+                        distance_unit = get_distance_unit_label(use_usa_units)
+                        st.metric("Distance Spread", f"±{consistency_value:.1f}{distance_unit}")
                         if 'Shot Count' in most_consistent:
                             st.caption(f"Based on {most_consistent['Shot Count']} shots")
                         st.success("💡 **Use this club** when you need predictable distance control!")
@@ -2670,7 +2841,12 @@ if uploaded_files:
                         # For now, just show absolute best, but could be improved with club-type weighting
                         best_distance = club_summary_df.loc[club_summary_df['Avg Distance'].idxmax()]
                         st.metric("Club", best_distance['Club Type'])
-                        st.metric("Avg Carry", f"{best_distance['Avg Distance']:.1f}m")
+                        # Apply unit conversion to average distance
+                        avg_distance_value = best_distance['Avg Distance']
+                        if use_usa_units:
+                            avg_distance_value = avg_distance_value * 1.09361  # Convert to yards
+                        distance_unit = get_distance_unit_label(use_usa_units)
+                        st.metric("Avg Carry", f"{avg_distance_value:.1f}{distance_unit}")
                         if 'Shot Count' in best_distance:
                             st.caption(f"Based on {best_distance['Shot Count']} shots")
                         st.success("💡 **This club** gives you maximum distance!")
@@ -2691,18 +2867,49 @@ if uploaded_files:
                 st.markdown("---")
                 st.markdown("#### 📊 **Club Performance Overview**")
                 
-                # Create a comprehensive table
+                # Create a comprehensive table with unit conversions
                 display_df = club_summary_df.copy()
+                
+                # Get unit labels
+                distance_unit = get_distance_unit_label(use_usa_units)
+                speed_unit = get_speed_unit_label(use_usa_units)
+                
+                # Apply unit conversions and update column names
                 if 'Avg Distance' in display_df.columns:
-                    display_df['Avg Distance'] = display_df['Avg Distance'].round(1)
+                    if use_usa_units:
+                        display_df['Avg Distance'] = display_df['Avg Distance'] * 1.09361  # Convert to yards
+                    display_df = display_df.rename(columns={'Avg Distance': f'Avg Distance ({distance_unit})'})
+                    display_df[f'Avg Distance ({distance_unit})'] = display_df[f'Avg Distance ({distance_unit})'].round(1)
+                
                 if 'Distance Consistency' in display_df.columns:
-                    display_df['Distance Consistency'] = display_df['Distance Consistency'].round(1)
+                    if use_usa_units:
+                        display_df['Distance Consistency'] = display_df['Distance Consistency'] * 1.09361  # Convert to yards
+                    display_df = display_df.rename(columns={'Distance Consistency': f'Distance Consistency (±{distance_unit})'})
+                    display_df[f'Distance Consistency (±{distance_unit})'] = display_df[f'Distance Consistency (±{distance_unit})'].round(1)
+                
+                if 'Avg Club Speed' in display_df.columns:
+                    if use_usa_units:
+                        display_df['Avg Club Speed'] = display_df['Avg Club Speed'] * 0.621371  # Convert to mph
+                    display_df = display_df.rename(columns={'Avg Club Speed': f'Avg Club Speed ({speed_unit})'})
+                    display_df[f'Avg Club Speed ({speed_unit})'] = display_df[f'Avg Club Speed ({speed_unit})'].round(1)
+                
+                if 'Avg Ball Speed' in display_df.columns:
+                    if use_usa_units:
+                        display_df['Avg Ball Speed'] = display_df['Avg Ball Speed'] * 0.621371  # Convert to mph
+                    display_df = display_df.rename(columns={'Avg Ball Speed': f'Avg Ball Speed ({speed_unit})'})
+                    display_df[f'Avg Ball Speed ({speed_unit})'] = display_df[f'Avg Ball Speed ({speed_unit})'].round(1)
+                
+                # Round other columns
                 if 'Direction Accuracy' in display_df.columns:
-                    display_df['Direction Accuracy'] = display_df['Direction Accuracy'].round(1)
+                    display_df['Direction Accuracy (±°)'] = display_df['Direction Accuracy'].round(1)
+                    display_df = display_df.drop(columns=['Direction Accuracy'])
+                    
                 if 'Straight Shot %' in display_df.columns:
                     display_df['Straight Shot %'] = display_df['Straight Shot %'].round(1)
+                    
                 if 'Avg Smash Factor' in display_df.columns:
                     display_df['Avg Smash Factor'] = display_df['Avg Smash Factor'].round(3)
+                    
                 if 'Optimal Strike %' in display_df.columns:
                     display_df['Optimal Strike %'] = display_df['Optimal Strike %'].round(1)
                 
@@ -2724,8 +2931,14 @@ if uploaded_files:
                 if 'Distance Consistency' in club_summary_df.columns:
                     worst_consistency = club_summary_df.loc[club_summary_df['Distance Consistency'].idxmax()]
                     if worst_consistency['Distance Consistency'] > 20:
+                        # Apply unit conversion for the recommendation text
+                        consistency_value = worst_consistency['Distance Consistency']
+                        distance_unit = "m"
+                        if use_usa_units:
+                            consistency_value = consistency_value * 1.09361  # Convert to yards
+                            distance_unit = "yd"
                         recommendations.append(
-                            f"📏 **Improve {worst_consistency['Club Type']} consistency** - Distance spread of ±{worst_consistency['Distance Consistency']:.1f}m indicates tempo/contact work needed"
+                            f"📏 **Improve {worst_consistency['Club Type']} consistency** - Distance spread of ±{consistency_value:.1f}{distance_unit} indicates tempo/contact work needed"
                         )
                 
                 if 'Avg Smash Factor' in club_summary_df.columns:
@@ -2758,10 +2971,18 @@ if uploaded_files:
             # Create dispersion comparison
             disp_data = []
             for club, metrics in dispersion_metrics.items():
+                # Apply unit conversion for dispersion metrics
+                lateral_disp = metrics['lateral_dispersion']
+                distance_disp = metrics['distance_dispersion']
+                if use_usa_units:
+                    lateral_disp = lateral_disp * 1.09361  # Convert to yards
+                    distance_disp = distance_disp * 1.09361  # Convert to yards
+                
+                distance_unit = get_distance_unit_label(use_usa_units)
                 disp_data.append({
                     'Club Type': club,
-                    'Lateral Dispersion (m)': metrics['lateral_dispersion'],
-                    'Distance Dispersion (m)': metrics['distance_dispersion'],
+                    f'Lateral Dispersion ({distance_unit})': lateral_disp,
+                    f'Distance Dispersion ({distance_unit})': distance_disp,
                     'Consistency Score': metrics['consistency_score'],
                     'Shot Count': metrics['shot_count']
                 })
@@ -2772,10 +2993,11 @@ if uploaded_files:
                 # Consistency ranking
                 disp_df_sorted = disp_df.sort_values('Consistency Score')
                 
+                distance_unit = get_distance_unit_label(use_usa_units)
                 fig_disp = px.scatter(
                     disp_df,
-                    x='Lateral Dispersion (m)',
-                    y='Distance Dispersion (m)',
+                    x=f'Lateral Dispersion ({distance_unit})',
+                    y=f'Distance Dispersion ({distance_unit})',
                     size='Shot Count',
                     color='Consistency Score',
                     hover_name='Club Type',
