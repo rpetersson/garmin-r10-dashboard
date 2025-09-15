@@ -14,6 +14,9 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
 
     steps:
     - name: Checkout repository
@@ -102,9 +105,22 @@ jobs:
           export KUBECONFIG=$HOME/.kube/config/k3s.yaml
           echo "KUBECONFIG set to: $KUBECONFIG"
 
-          # Update the image in your Kubernetes deployment
+          # Get the image digest from the build
+          IMAGE_DIGEST="${{ needs.build-and-push.outputs.digest }}"
+          
+          # Update the image in your Kubernetes deployment using the digest for guaranteed latest image
           echo "Updating garmin-dashboard deployment image..."
-          k3s kubectl set image deployment/garmin-dashboard garmin-dashboard=${{ env.IMAGE_NAME }}:${{ github.sha }} -n robert-prod
+          echo "Using image: ${{ env.IMAGE_NAME }}@${IMAGE_DIGEST}"
+          
+          # Method 1: Update with digest (most reliable)
+          k3s kubectl set image deployment/garmin-dashboard garmin-dashboard=${{ env.IMAGE_NAME }}@${IMAGE_DIGEST} -n robert-prod
+          
+          # Method 2: If digest fails, force restart with latest tag + timestamp annotation
+          if [ $? -ne 0 ]; then
+            echo "Digest update failed, trying with latest tag and forced restart..."
+            k3s kubectl set image deployment/garmin-dashboard garmin-dashboard=${{ env.IMAGE_NAME }}:latest -n robert-prod
+            k3s kubectl annotate deployment/garmin-dashboard deployment.kubernetes.io/restartedAt="$(date +%Y-%m-%dT%H:%M:%S%z)" -n robert-prod --overwrite
+          fi
           
           # Check deployment status before waiting
           echo "Current deployment status:"
@@ -130,13 +146,13 @@ jobs:
             exit 1
           fi
           
-          # Verify the deployment
+          # Verify the deployment and show final image being used
           echo "Verifying deployment..."
           k3s kubectl get pods -l app=garmin-dashboard -n robert-prod
-
-          # Show deployment status
-          echo "Deployment status:"
-          k3s kubectl describe deployment garmin-dashboard -n robert-prod
+          
+          echo "Current image in deployment:"
+          k3s kubectl get deployment garmin-dashboard -n robert-prod -o jsonpath='{.spec.template.spec.containers[0].image}'
+          echo ""
 
           # Exit SSH
           exit

@@ -6,6 +6,11 @@ metadata:
     app: garmin-dashboard
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: garmin-dashboard
@@ -17,6 +22,7 @@ spec:
       containers:
       - name: garmin-dashboard
         image: tristar86/garmin-r10-dashboard:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8501
         volumeMounts:
