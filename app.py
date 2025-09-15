@@ -46,6 +46,75 @@ def get_distance_unit_label(use_usa_units=False):
     """Get the distance unit label for charts"""
     return "yards" if use_usa_units else "meters"
 
+# Variance and consistency calculation functions
+def calculate_rolling_variance(data, window=5):
+    """Calculate rolling variance for consistency tracking"""
+    if len(data) < window:
+        return pd.Series([np.nan] * len(data), index=data.index)
+    return data.rolling(window=window, center=True).var()
+
+def calculate_rolling_std(data, window=5):
+    """Calculate rolling standard deviation for consistency tracking"""
+    if len(data) < window:
+        return pd.Series([np.nan] * len(data), index=data.index)
+    return data.rolling(window=window, center=True).std()
+
+def get_consistency_rating(std_value, metric_type):
+    """Get consistency rating based on standard deviation and metric type"""
+    if pd.isna(std_value):
+        return "Insufficient Data", "⚪"
+    
+    # Define thresholds for different metric types
+    thresholds = {
+        'distance': {'excellent': 5, 'good': 10, 'average': 20},  # meters/yards
+        'speed': {'excellent': 2, 'good': 5, 'average': 10},      # km/h or mph
+        'angle': {'excellent': 2, 'good': 5, 'average': 10},      # degrees
+        'smash_factor': {'excellent': 0.05, 'good': 0.1, 'average': 0.2},  # ratio
+        'spin': {'excellent': 200, 'good': 500, 'average': 1000}  # rpm
+    }
+    
+    if metric_type not in thresholds:
+        metric_type = 'distance'  # default
+    
+    t = thresholds[metric_type]
+    
+    if std_value <= t['excellent']:
+        return "Excellent", "🔥"
+    elif std_value <= t['good']:
+        return "Good", "👍"
+    elif std_value <= t['average']:
+        return "Average", "📊"
+    else:
+        return "Needs Work", "💪"
+
+def format_variance_display(variance, metric_type, use_usa_units=False):
+    """Format variance value for display with appropriate units"""
+    if pd.isna(variance):
+        return "N/A"
+    
+    std_dev = np.sqrt(variance)
+    
+    if metric_type in ['distance']:
+        if use_usa_units:
+            std_dev = convert_distance_to_usa(std_dev)
+            return f"±{std_dev:.1f} yd"
+        else:
+            return f"±{std_dev:.1f}m"
+    elif metric_type in ['speed']:
+        if use_usa_units:
+            std_dev = convert_speed_to_usa(std_dev)
+            return f"±{std_dev:.1f} mph"
+        else:
+            return f"±{std_dev:.1f} km/h"
+    elif metric_type in ['angle']:
+        return f"±{std_dev:.1f}°"
+    elif metric_type in ['smash_factor']:
+        return f"±{std_dev:.3f}"
+    elif metric_type in ['spin']:
+        return f"±{std_dev:.0f} rpm"
+    else:
+        return f"±{std_dev:.2f}"
+
 # Helper function for smart x-axis tick spacing
 def get_smart_dtick(num_shots):
     """Calculate appropriate tick spacing based on number of shots"""
@@ -274,15 +343,44 @@ if uploaded_files:
     if 'Club Type' in df.columns:
         club_list = [club for club in df['Club Type'].unique() if pd.notna(club)]
         club_list.sort()
+        
+        # Find the lowest iron as default selection
+        def get_lowest_iron(clubs):
+            irons = [club for club in clubs if 'Iron' in str(club)]
+            if irons:
+                # Extract iron numbers and find the lowest
+                iron_numbers = []
+                for iron in irons:
+                    try:
+                        # Extract number from strings like "4 Iron", "7-Iron", etc.
+                        import re
+                        numbers = re.findall(r'\d+', iron)
+                        if numbers:
+                            iron_numbers.append((int(numbers[0]), iron))
+                    except:
+                        continue
+                if iron_numbers:
+                    iron_numbers.sort()
+                    return iron_numbers[0][1]  # Return the iron with lowest number
+            # If no irons found, return first club in sorted list
+            return clubs[0] if clubs else None
+        
+        default_club = get_lowest_iron(club_list)
     else:
         club_list = []
+        default_club = None
     
     if club_list:
         # Create two columns for club selection and units selection
         col_club, col_units = st.columns([2, 1])
         
         with col_club:
-            selected_club = st.selectbox("Select Club Type", ["All Clubs"] + club_list)
+            # Find the index of the default club for the selectbox
+            default_index = 0
+            if default_club and default_club in club_list:
+                default_index = club_list.index(default_club)
+            
+            selected_club = st.selectbox("Select Club Type", club_list, index=default_index)
         
         with col_units:
             # Units selection
@@ -294,12 +392,9 @@ if uploaded_files:
                 key="units_selection"
             )
         
-        if selected_club == "All Clubs":
-            club_df = df
-            title_suffix = "All Clubs"
-        else:
-            club_df = df[df['Club Type'] == selected_club]
-            title_suffix = selected_club
+        # Filter data by selected club
+        club_df = df[df['Club Type'] == selected_club]
+        title_suffix = selected_club
 
         # Outlier Detection and Removal
         st.subheader("🔧 Data Cleaning Options")
@@ -633,8 +728,75 @@ if uploaded_files:
                                 st.metric("Latest Session", latest_date)
                             else:
                                 st.metric("Latest Session", "N/A")
-                        else:
-                            st.metric("Latest Session", "N/A")
+                    
+                    # Consistency Analysis Summary
+                    st.subheader("📊 Consistency Analysis")
+                    
+                    consistency_metrics = [
+                        ('Carry Distance', 'distance'),
+                        ('Club Speed', 'speed'),
+                        ('Ball Speed', 'speed'),
+                        ('Smash Factor', 'smash_factor'),
+                        ('Launch Angle', 'angle'),
+                        ('Attack Angle', 'angle')
+                    ]
+                    
+                    consistency_cols = st.columns(3)
+                    col_idx = 0
+                    
+                    for metric_col, metric_type in consistency_metrics:
+                        if metric_col in club_df.columns and club_df[metric_col].notna().any():
+                            data_std = club_df[metric_col].std()
+                            data_var = club_df[metric_col].var()
+                            
+                            consistency_rating, consistency_icon = get_consistency_rating(data_std, metric_type)
+                            variance_display = format_variance_display(data_var, metric_type, use_usa_units)
+                            
+                            with consistency_cols[col_idx % 3]:
+                                st.metric(
+                                    f"{metric_col} Consistency",
+                                    f"{consistency_rating} {consistency_icon}",
+                                    delta=variance_display
+                                )
+                            
+                            col_idx += 1
+                    
+                    # Overall consistency insights
+                    st.subheader("🎯 Key Consistency Insights")
+                    
+                    insights = []
+                    
+                    # Check carry distance consistency
+                    if 'Carry Distance' in club_df.columns and club_df['Carry Distance'].notna().any():
+                        carry_std = club_df['Carry Distance'].std()
+                        carry_rating, _ = get_consistency_rating(carry_std, 'distance')
+                        if carry_rating == "Excellent":
+                            insights.append("🔥 Excellent distance consistency - your swing is very repeatable!")
+                        elif carry_rating == "Needs Work":
+                            insights.append("💪 Focus on swing consistency to improve distance control")
+                    
+                    # Check smash factor consistency
+                    if 'Smash Factor' in club_df.columns and club_df['Smash Factor'].notna().any():
+                        smash_std = club_df['Smash Factor'].std()
+                        smash_rating, _ = get_consistency_rating(smash_std, 'smash_factor')
+                        if smash_rating == "Excellent":
+                            insights.append("⚡ Outstanding smash factor consistency - excellent strike quality!")
+                        elif smash_rating == "Needs Work":
+                            insights.append("🎯 Work on center contact to improve smash factor consistency")
+                    
+                    # Check direction consistency
+                    if 'Launch Direction' in club_df.columns and club_df['Launch Direction'].notna().any():
+                        direction_std = club_df['Launch Direction'].std()
+                        if direction_std <= 8:
+                            insights.append("🎯 Excellent directional control - very consistent ball flight!")
+                        elif direction_std >= 15:
+                            insights.append("📍 Focus on alignment and swing path for better directional consistency")
+                    
+                    if insights:
+                        for insight in insights:
+                            st.info(insight)
+                    else:
+                        st.info("📊 Continue practicing to build more consistency data for analysis")
                     
                     st.markdown("---")  # Add separator line
                     
@@ -1307,6 +1469,62 @@ if uploaded_files:
                                         opacity=0.7
                                     ))
                                 
+                                # Add variance bands for consistency tracking
+                                if len(club_df) > 8:  # Need at least 8 points for meaningful variance
+                                    variance_window = min(8, len(club_df) // 2)
+                                    rolling_std = calculate_rolling_std(y_data, window=variance_window)
+                                    rolling_mean = y_data.rolling(window=variance_window, center=True).mean()
+                                    
+                                    # Create upper and lower variance bands
+                                    upper_band = rolling_mean + rolling_std
+                                    lower_band = rolling_mean - rolling_std
+                                    
+                                    # Add variance bands (±1 standard deviation)
+                                    fig.add_trace(go.Scatter(
+                                        x=club_df['Club Shot Number'],
+                                        y=upper_band,
+                                        mode='lines',
+                                        name='Consistency Band (+1σ)',
+                                        line=dict(width=0),
+                                        showlegend=False,
+                                        hoverinfo='skip'
+                                    ))
+                                    
+                                    fig.add_trace(go.Scatter(
+                                        x=club_df['Club Shot Number'],
+                                        y=lower_band,
+                                        mode='lines',
+                                        fill='tonexty',
+                                        fillcolor='rgba(128,128,128,0.1)',
+                                        name='Consistency Range (±1σ)',
+                                        line=dict(width=0),
+                                        hovertemplate='<b>Shot %{x}</b><br>' +
+                                                    'Consistency Band<br>' +
+                                                    '<extra></extra>'
+                                    ))
+                                    
+                                    # Calculate overall consistency metrics
+                                    overall_std = y_data.std()
+                                    
+                                    # Determine metric type for consistency rating
+                                    metric_type = 'distance'
+                                    if col in ['Club Speed', 'Ball Speed']:
+                                        metric_type = 'speed'
+                                    elif col in ['Launch Angle', 'Attack Angle']:
+                                        metric_type = 'angle'
+                                    elif col == 'Smash Factor':
+                                        metric_type = 'smash_factor'
+                                    elif col in ['Backspin', 'Sidespin']:
+                                        metric_type = 'spin'
+                                    
+                                    consistency_rating, consistency_icon = get_consistency_rating(overall_std, metric_type)
+                                    variance_display = format_variance_display(overall_std**2, metric_type, use_usa_units)
+                                    
+                                    # Add consistency information to chart title
+                                    consistency_info = f" | Consistency: {consistency_rating} {consistency_icon} ({variance_display})"
+                                else:
+                                    consistency_info = " | Need more data for consistency analysis"
+                                
                                 # Add optimal zones for golf-specific metrics
                                 if col == 'Smash Factor':
                                     fig.add_hline(y=1.30, line_dash="dot", line_color="green", 
@@ -1361,9 +1579,9 @@ if uploaded_files:
                                         
                                         # Convert trend line to display units if needed
                                         if use_usa_units and col in ['Club Speed', 'Ball Speed']:
-                                            trend_line_display = trend_line_original(x_vals_clean).apply(convert_speed_to_usa)
+                                            trend_line_display = pd.Series(trend_line_original(x_vals_clean)).apply(convert_speed_to_usa)
                                         elif use_usa_units and col in ['Carry Distance', 'Total Distance']:
-                                            trend_line_display = trend_line_original(x_vals_clean).apply(convert_distance_to_usa)
+                                            trend_line_display = pd.Series(trend_line_original(x_vals_clean)).apply(convert_distance_to_usa)
                                         else:
                                             trend_line_display = trend_line_original(x_vals_clean)
                                         
@@ -1453,7 +1671,7 @@ if uploaded_files:
                                             )
                                 
                                 fig.update_layout(
-                                    title=f"{label} Trend Over Time",
+                                    title=f"{label} Trend Over Time{consistency_info}",
                                     xaxis_title=f"{title_suffix} Shot Number",
                                     yaxis_title=f"{label} ({unit})" if unit else label,
                                     height=400,
@@ -1463,15 +1681,8 @@ if uploaded_files:
                                 
                                 # Set appropriate y-axis range for Smash Factor
                                 if col == 'Smash Factor':
-                                    # Get data range and set reasonable bounds around optimal 1.30
-                                    min_val = club_df[col].min()
-                                    max_val = club_df[col].max()
-                                    
-                                    # Set bounds with some padding around the data, but focused on golf-relevant range
-                                    y_min = max(0.8, min_val - 0.1)  # Don't go below 0.8 (unrealistic)
-                                    y_max = min(1.8, max_val + 0.1)  # Don't go above 1.8 (unrealistic)
-                                    
-                                    fig.update_yaxes(range=[y_min, y_max])
+                                    # Use fixed scale from 0 to 1.7 for consistent view across all data
+                                    fig.update_yaxes(range=[0, 1.7])
                                 
                                 st.plotly_chart(fig, use_container_width=True)
                             except Exception as e:
@@ -1610,16 +1821,6 @@ if uploaded_files:
                 
                 with tab2:
                     st.subheader("🎯 Accuracy & Consistency Analysis")
-                    
-                    # Add shot shape reference image
-                    try:
-                        st.image("assets/shotshape.png", 
-                               caption="Shot Shape Reference Guide - Understanding Your Ball Flight Patterns", 
-                               use_column_width=True)
-                        st.markdown("---")  # Add a separator line
-                    except Exception as e:
-                        # If image fails to load, continue without it
-                        pass
                     
                     # Accuracy metrics
                     accuracy_cols = st.columns(3)
@@ -2141,18 +2342,53 @@ if uploaded_files:
                         if col in club_df.columns and club_df[col].notna().any():
                             with cols[i % 2]:
                                 try:
+                                    # Calculate variance metrics for the distribution
+                                    data_std = club_df[col].std()
+                                    data_var = club_df[col].var()
+                                    
+                                    # Determine metric type for consistency rating
+                                    if 'Distance' in col:
+                                        metric_type = 'distance'
+                                    elif 'Direction' in col or 'Path' in col:
+                                        metric_type = 'angle'
+                                    else:
+                                        metric_type = 'distance'
+                                    
+                                    consistency_rating, consistency_icon = get_consistency_rating(data_std, metric_type)
+                                    variance_display = format_variance_display(data_var, metric_type, use_usa_units)
+                                    
                                     fig = px.histogram(
                                         club_df, 
                                         x=col, 
-                                        title=f"{title} Distribution",
+                                        title=f"{title} Distribution | Variance: {variance_display} | {consistency_rating} {consistency_icon}",
                                         nbins=15
                                     )
+                                    
+                                    # Add vertical lines for mean and ±1 standard deviation
+                                    mean_val = club_df[col].mean()
+                                    fig.add_vline(x=mean_val, line_dash="solid", line_color="red", 
+                                                annotation_text="Mean", annotation_position="top")
+                                    fig.add_vline(x=mean_val + data_std, line_dash="dash", line_color="orange", 
+                                                annotation_text="+1σ", annotation_position="top")
+                                    fig.add_vline(x=mean_val - data_std, line_dash="dash", line_color="orange", 
+                                                annotation_text="-1σ", annotation_position="top")
+                                    
                                     fig.update_layout(height=350)
                                     st.plotly_chart(fig, use_container_width=True)
                                 except Exception as e:
                                     st.error(f"Error creating distribution for {title}: {str(e)}")
                 
                 with tab3:
+                    # Add shot shape reference image
+                    try:
+                        st.image("assets/shotshape.png", 
+                               caption="Shot Shape Reference Guide - Understanding Your Ball Flight Patterns", 
+                               width=500)
+                        st.markdown("---")  # Add a separator line
+                    except Exception:
+                        # If image fails to load, continue without it
+                        pass
+                    
                     # Shot pattern analysis
                     if ('Launch Direction' in club_df.columns and 'Carry Distance' in club_df.columns and 
                         club_df['Launch Direction'].notna().any() and club_df['Carry Distance'].notna().any()):
