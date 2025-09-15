@@ -154,20 +154,167 @@ st.set_page_config(page_title="Garmin Approach Dashboard", layout="wide")
 st.title("🏌️ Garmin Approach Dashboard")
 st.markdown("Upload your Garmin Approach CSV files to analyze golf swing data and visualize performance trends.")
 
-# Add file upload tips
-with st.expander("📁 File Upload Tips", expanded=False):
-    st.markdown("""
-    **For best results:**
-    - Upload CSV files one at a time if you experience issues with multiple files
-    - Ensure files are properly formatted CSV exports from Garmin devices
-    - File size limit: 1GB per file
-    - Supported encodings: UTF-8, Latin-1
+# Add file upload tips and Garmin R10 export guide
+with st.expander("📁 File Upload Tips & Garmin R10 Export Guide", expanded=False):
     
-    **Common issues:**
-    - Empty files or files with only headers
-    - Corrupted CSV files
-    - Files with non-standard encoding
-    """)
+    # Create tabs for organization
+    guide_tab1, guide_tab2 = st.tabs(["🚀 How to Export from Garmin R10", "📋 Upload Tips"])
+    
+    with guide_tab1:
+        st.markdown("""
+        ## 🏌️ **Complete Guide: Exporting CSV Files from Your Garmin R10**
+        
+        ### **📱 Method 1: Garmin Golf App (Recommended)**
+        
+        #### **Step 1: Connect & Sync**
+        1. **Open the Garmin Golf app** on your smartphone
+        2. **Ensure your R10 is connected** via Bluetooth
+        3. **Complete your practice session** and let data sync automatically
+        4. **Verify data appears** in your session history
+        
+        #### **Step 2: Export Your Data**
+        1. **Navigate to 'Sessions'** or 'History' in the app
+        2. **Select the session(s)** you want to export
+        3. **Look for 'Share' or 'Export' option** (usually three dots menu or share icon)
+        4. **Choose 'Export as CSV'** or 'Save Data'
+        5. **Select location** to save (email, cloud storage, or local storage)
+        
+        ---
+        
+        ### **💻 Method 2: Garmin Connect (Web/Desktop)**
+        
+        #### **Step 1: Access Garmin Connect**
+        1. **Visit** [connect.garmin.com](https://connect.garmin.com)
+        2. **Log in** with your Garmin account
+        3. **Navigate to 'Activities'** or 'Golf' section
+        
+        #### **Step 2: Find Your R10 Sessions**
+        1. **Filter by date range** when you used your R10
+        2. **Look for 'Approach' or 'Golf' activities**
+        3. **Click on individual sessions** to view details
+        
+        #### **Step 3: Export Data**
+        1. **Click on a session** to open details
+        2. **Look for 'Export' or gear/settings icon**
+        3. **Select 'Export Original'** or 'Download CSV'
+        4. **Save to your computer**
+        
+        ---
+        
+        ### **📊 Method 3: Garmin Express (Desktop Software)**
+        
+        #### **Step 1: Install & Setup**
+        1. **Download Garmin Express** from garmin.com
+        2. **Install** on your computer
+        3. **Connect your R10** via USB cable
+        
+        #### **Step 2: Export Process**
+        1. **Open Garmin Express**
+        2. **Select your R10 device**
+        3. **Go to 'Data Export' or 'Backup'**
+        4. **Choose date range** for your sessions
+        5. **Export as CSV format**
+        
+        ---
+        
+        ### **✅ What Your CSV Should Contain:**
+        
+        **Essential Columns:**
+        - `Club Speed` (km/h)
+        - `Ball Speed` (km/h) 
+        - `Smash Factor`
+        - `Carry Distance` (m)
+        - `Total Distance` (m)
+        - `Launch Angle` (°)
+        - `Attack Angle` (°)
+        - `Backspin` (rpm)
+        - `Sidespin` (rpm)
+        - `Launch Direction` (°)
+        - `Club Path` (°)
+        
+        **Additional Helpful Columns:**
+        - `Date` & `Time`
+        - `Club Type` (Driver, 7 Iron, etc.)
+        - `Session` ID or Name
+        
+        ---
+        
+        ### **🔧 Troubleshooting Export Issues:**
+        
+        **❌ Can't Find Export Option?**
+        - Update your Garmin Golf app to latest version
+        - Try logging out and back in
+        - Check if data has fully synced from R10
+        
+        **❌ Empty or Corrupted Files?**
+        - Ensure your R10 session recorded actual shots
+        - Try exporting smaller date ranges
+        - Check file isn't corrupted during download
+        
+        **❌ Missing Key Metrics?**
+        - Verify your R10 firmware is up to date
+        - Some older sessions may have limited data
+        - Ensure proper R10 setup during practice
+        
+        ---
+        
+        ### **💡 Pro Tips for Better Data:**
+        
+        **🎯 Setup Tips:**
+        - Position R10 **8 feet behind** the ball
+        - Ensure **alignment** with target line
+        - Use on **level ground** when possible
+        - **Calibrate** before each session
+        
+        **📈 Data Collection:**
+        - Take **10+ shots** per session for meaningful analysis
+        - Practice with **same club** for consistency tracking
+        - **Note conditions** (wind, temperature) in session names
+        - Export data **regularly** to avoid loss
+        
+        ---
+        
+        ### **🚨 Still Having Issues?**
+        
+        **Contact Support:**
+        - **Garmin Support:** Visit support.garmin.com
+        - **Community Forums:** forums.garmin.com
+        - **App Issues:** Check app store for updates
+        
+        **Alternative Methods:**
+        - Some third-party golf apps can sync with Garmin
+        - Manual shot tracking if export fails
+        - Contact dashboard support if file format issues persist
+        """)
+    
+    with guide_tab2:
+        st.markdown("""
+        ### **📤 Upload Tips for This Dashboard:**
+        
+        **✅ For Best Results:**
+        - Upload CSV files **one at a time** if you experience issues with multiple files
+        - Ensure files are properly formatted CSV exports from Garmin devices
+        - **File size limit:** 1GB per file (typical R10 sessions are much smaller)
+        - **Supported encodings:** UTF-8, Latin-1
+        
+        **⚠️ Common Issues:**
+        - **Empty files** or files with only headers
+        - **Corrupted CSV files** from incomplete downloads
+        - **Files with non-standard encoding** (try re-exporting)
+        - **Missing key columns** (club speed, ball speed, distances)
+        
+        **🔧 Quick Fixes:**
+        - **Re-export** from Garmin if upload fails
+        - **Check file size** - very large files may timeout
+        - **Verify CSV format** - should open properly in Excel/Google Sheets
+        - **Try different export method** if one doesn't work
+        
+        **📊 What Happens After Upload:**
+        - Dashboard automatically detects your data structure
+        - **Outlier detection** removes unrealistic shots
+        - **Unit conversion** available (metric ↔ imperial)
+        - **Multiple sessions** are automatically organized
+        """)
 
 uploaded_files = st.file_uploader("Choose one or more CSV files", type=["csv"], accept_multiple_files=True)
 
@@ -683,6 +830,110 @@ if uploaded_files:
                 optimal_range = club_df[(club_df['Smash Factor'] >= 1.25) & (club_df['Smash Factor'] <= 1.35)]
                 percentage_optimal = (len(optimal_range) / len(club_df)) * 100
                 st.info(f"🎯 {percentage_optimal:.1f}% of shots within optimal range (1.25-1.35)")
+            
+            # Driver backspin optimization analysis
+            if ('Driver' in title_suffix and 'Backspin' in club_df.columns and 'Total Distance' in club_df.columns and 
+                'Ball Speed' in club_df.columns and club_df['Backspin'].notna().any()):
+                st.subheader("🚀 Driver Distance Optimization")
+                
+                # Calculate current averages
+                avg_backspin = club_df['Backspin'].mean()
+                avg_total_distance = club_df['Total Distance'].mean()
+                avg_ball_speed = club_df['Ball Speed'].mean()
+                
+                # Optimal backspin range for drivers (2200-2800 rpm for maximum distance)
+                optimal_backspin_low = 2200
+                optimal_backspin_high = 2800
+                optimal_backspin_target = 2500  # Sweet spot for most drivers
+                
+                # Distance prediction based on backspin optimization
+                # Using approximate formula: for every 500 rpm reduction in excessive backspin, gain ~10-15 yards
+                # And for every 500 rpm increase from too-low backspin, gain ~8-12 yards
+                
+                if avg_backspin > optimal_backspin_high:
+                    # Too much backspin - losing distance
+                    excess_spin = avg_backspin - optimal_backspin_target
+                    # More aggressive gain calculation for high spin (bigger impact)
+                    distance_gain_m = (excess_spin / 500) * 12  # ~12m per 500rpm reduction
+                    optimization_type = "Reduce Backspin"
+                    spin_issue = "Too High"
+                    spin_color = "red"
+                elif avg_backspin < optimal_backspin_low:
+                    # Too little backspin - need more carry
+                    deficit_spin = optimal_backspin_target - avg_backspin
+                    # More conservative gain for low spin
+                    distance_gain_m = (deficit_spin / 500) * 8  # ~8m per 500rpm increase
+                    optimization_type = "Increase Backspin"
+                    spin_issue = "Too Low"
+                    spin_color = "orange"
+                else:
+                    # Already in optimal range
+                    distance_gain_m = 0
+                    optimization_type = "Maintain Current"
+                    spin_issue = "Optimal"
+                    spin_color = "green"
+                
+                # Convert distance gain to appropriate units
+                if use_usa_units:
+                    distance_gain_display = distance_gain_m * 1.09361  # Convert to yards
+                    distance_unit = "yards"
+                    current_distance_display = avg_total_distance * 1.09361
+                    predicted_distance_display = (avg_total_distance + distance_gain_m) * 1.09361
+                else:
+                    distance_gain_display = distance_gain_m
+                    distance_unit = "meters"
+                    current_distance_display = avg_total_distance
+                    predicted_distance_display = avg_total_distance + distance_gain_m
+                
+                # Display optimization metrics
+                opt_cols = st.columns(4)
+                
+                with opt_cols[0]:
+                    st.metric("Current Avg Backspin", f"{avg_backspin:.0f} rpm")
+                    st.markdown(f"**Status:** <span style='color:{spin_color}'>{spin_issue}</span>", unsafe_allow_html=True)
+                
+                with opt_cols[1]:
+                    st.metric("Optimal Range", f"{optimal_backspin_low}-{optimal_backspin_high} rpm")
+                    st.metric("Target", f"{optimal_backspin_target} rpm")
+                
+                with opt_cols[2]:
+                    st.metric("Current Avg Distance", f"{current_distance_display:.1f} {distance_unit}")
+                
+                with opt_cols[3]:
+                    if distance_gain_m > 2:  # Only show if meaningful gain
+                        st.metric("Predicted Optimal Distance", 
+                                f"{predicted_distance_display:.1f} {distance_unit}",
+                                delta=f"+{distance_gain_display:.1f} {distance_unit}")
+                    else:
+                        st.metric("Distance Potential", "Already Optimized ✅")
+                
+                # Provide specific recommendations
+                if distance_gain_m > 2:
+                    if avg_backspin > optimal_backspin_high:
+                        st.warning(f"💡 **Optimization Opportunity:** Your backspin is {avg_backspin - optimal_backspin_target:.0f} rpm above optimal. "
+                                 f"Reducing to {optimal_backspin_target} rpm could add **{distance_gain_display:.1f} {distance_unit}** to your drives!")
+                        st.info("🔧 **Tips to Reduce Backspin:**\n"
+                               "- Tee the ball higher\n"
+                               "- Hit up on the ball (positive attack angle)\n"
+                               "- Move ball position slightly forward\n"
+                               "- Check driver loft (consider lower loft)")
+                    elif avg_backspin < optimal_backspin_low:
+                        st.warning(f"💡 **Optimization Opportunity:** Your backspin is {optimal_backspin_target - avg_backspin:.0f} rpm below optimal. "
+                                 f"Increasing to {optimal_backspin_target} rpm could add **{distance_gain_display:.1f} {distance_unit}** to your drives!")
+                        st.info("🔧 **Tips to Increase Backspin:**\n"
+                               "- Tee the ball slightly lower\n"
+                               "- Reduce attack angle (hit less up)\n"
+                               "- Check driver loft (consider higher loft)\n"
+                               "- Ensure clean contact on center of face")
+                else:
+                    st.success("🎉 **Excellent Backspin Control!** Your backspin is already in the optimal range for maximum distance.")
+                
+                # Show distribution of backspin values
+                if len(club_df) > 5:
+                    optimal_shots = club_df[(club_df['Backspin'] >= optimal_backspin_low) & 
+                                          (club_df['Backspin'] <= optimal_backspin_high)]
+                    optimal_percentage = (len(optimal_shots) / len(club_df)) * 100
+                    st.info(f"📊 **Consistency:** {optimal_percentage:.1f}% of your drives have optimal backspin ({optimal_backspin_low}-{optimal_backspin_high} rpm)")
             
             if available_stats:
                 # Create tabs for different views
