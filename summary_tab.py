@@ -38,16 +38,28 @@ with tab0:
         st.markdown("### ⚡ **Efficiency**")
         if 'Smash Factor' in club_df.columns and club_df['Smash Factor'].notna().any():
             avg_smash = club_df['Smash Factor'].mean()
-            optimal_shots = club_df[(club_df['Smash Factor'] >= 1.25) & (club_df['Smash Factor'] <= 1.35)]
+            # Club-specific optimal ranges
+            is_driver_only = (club_df['Club'].unique() == ['Driver']).all() if 'Club' in club_df.columns else False
+            if is_driver_only:
+                optimal_shots = club_df[(club_df['Smash Factor'] >= 1.45) & (club_df['Smash Factor'] <= 1.55)]
+            else:
+                optimal_shots = club_df[(club_df['Smash Factor'] >= 1.25) & (club_df['Smash Factor'] <= 1.35)]
             efficiency_pct = (len(optimal_shots) / len(club_df)) * 100
             
             st.metric("Avg Smash Factor", f"{avg_smash:.3f}")
             st.metric("Optimal Range %", f"{efficiency_pct:.1f}%")
             
-            if avg_smash >= 1.28: rating = "Excellent 🔥"
-            elif avg_smash >= 1.22: rating = "Good 👍"
-            elif avg_smash >= 1.15: rating = "Average 📊"
-            else: rating = "Needs Work 💪"
+            # Club-specific ratings
+            if is_driver_only:
+                if avg_smash >= 1.48: rating = "Excellent 🔥"
+                elif avg_smash >= 1.42: rating = "Good 👍"
+                elif avg_smash >= 1.35: rating = "Average 📊"
+                else: rating = "Needs Work 💪"
+            else:
+                if avg_smash >= 1.28: rating = "Excellent 🔥"
+                elif avg_smash >= 1.22: rating = "Good 👍"
+                elif avg_smash >= 1.15: rating = "Average 📊"
+                else: rating = "Needs Work 💪"
             
             st.caption(f"Rating: {rating}")
         

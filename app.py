@@ -736,11 +736,19 @@ if uploaded_files:
             
             if 'Smash Factor' in club_df.columns and club_df['Smash Factor'].notna().any():
                 avg_smash = club_df['Smash Factor'].mean()
-                optimal_smash = 1.30
+                # Club-specific optimal smash factors
+                is_driver_only = (club_df['Club'].unique() == ['Driver']).all() if 'Club' in club_df.columns else False
+                if is_driver_only:
+                    optimal_smash = 1.50
+                    help_text = "Optimal smash factor for drivers is around 1.50"
+                else:
+                    optimal_smash = 1.30
+                    help_text = "Optimal smash factor is around 1.30"
+                
                 delta_smash = avg_smash - optimal_smash
                 delta_text = f"({delta_smash:+.3f})" if abs(delta_smash) > 0.001 else ""
                 with metrics_cols[1]:
-                    st.metric("Avg Smash Factor", f"{avg_smash:.3f}", delta=delta_text, help="Optimal smash factor is around 1.30")
+                    st.metric("Avg Smash Factor", f"{avg_smash:.3f}", delta=delta_text, help=help_text)
             
             if 'Club Speed' in club_df.columns and club_df['Club Speed'].notna().any():
                 avg_club_speed = club_df['Club Speed'].mean()
@@ -802,7 +810,13 @@ if uploaded_files:
             if 'Smash Factor' in club_df.columns and club_df['Smash Factor'].notna().any():
                 st.subheader("⚡ Smash Factor Efficiency")
                 
-                optimal_smash = 1.30
+                # Club-specific optimal smash factors
+                is_driver_only = (club_df['Club'].unique() == ['Driver']).all() if 'Club' in club_df.columns else False
+                if is_driver_only:
+                    optimal_smash = 1.50
+                else:
+                    optimal_smash = 1.30
+                
                 avg_smash = club_df['Smash Factor'].mean()
                 efficiency = (avg_smash / optimal_smash) * 100
                 
@@ -1087,16 +1101,27 @@ if uploaded_files:
                         st.markdown("### ⚡ **Efficiency**")
                         if 'Smash Factor' in club_df.columns and club_df['Smash Factor'].notna().any():
                             avg_smash = club_df['Smash Factor'].mean()
-                            optimal_shots = club_df[(club_df['Smash Factor'] >= 1.25) & (club_df['Smash Factor'] <= 1.35)]
+                            # Club-specific optimal ranges
+                            if 'Driver' in title_suffix:
+                                optimal_shots = club_df[(club_df['Smash Factor'] >= 1.45) & (club_df['Smash Factor'] <= 1.55)]
+                            else:
+                                optimal_shots = club_df[(club_df['Smash Factor'] >= 1.25) & (club_df['Smash Factor'] <= 1.35)]
                             efficiency_pct = (len(optimal_shots) / len(club_df)) * 100
                             
                             st.metric("Avg Smash Factor", f"{avg_smash:.3f}")
                             st.metric("Optimal Range %", f"{efficiency_pct:.1f}%")
                             
-                            if avg_smash >= 1.28: rating = "Excellent 🔥"
-                            elif avg_smash >= 1.22: rating = "Good 👍"
-                            elif avg_smash >= 1.15: rating = "Average 📊"
-                            else: rating = "Needs Work 💪"
+                            # Club-specific ratings
+                            if 'Driver' in title_suffix:
+                                if avg_smash >= 1.48: rating = "Excellent 🔥"
+                                elif avg_smash >= 1.42: rating = "Good 👍"
+                                elif avg_smash >= 1.35: rating = "Average 📊"
+                                else: rating = "Needs Work 💪"
+                            else:
+                                if avg_smash >= 1.28: rating = "Excellent 🔥"
+                                elif avg_smash >= 1.22: rating = "Good 👍"
+                                elif avg_smash >= 1.15: rating = "Average 📊"
+                                else: rating = "Needs Work 💪"
                             
                             st.caption(f"Rating: {rating}")
                         
@@ -1468,22 +1493,37 @@ if uploaded_files:
                     # Smash Factor Analysis
                     if 'Smash Factor' in club_df.columns and club_df['Smash Factor'].notna().any():
                         avg_smash = club_df['Smash Factor'].mean()
-                        if avg_smash < 1.20:
+                        # Club-specific targets
+                        is_driver_only = (club_df['Club'].unique() == ['Driver']).all() if 'Club' in club_df.columns else False
+                        if is_driver_only:
+                            optimal_target = 1.50
+                            good_range = "1.45-1.55"
+                            efficiency_target = "1.50+ for maximum efficiency"
+                            low_threshold = 1.35
+                            med_threshold = 1.42
+                        else:
+                            optimal_target = 1.30
+                            good_range = "1.25-1.35"
+                            efficiency_target = "1.30+ for maximum efficiency"
+                            low_threshold = 1.20
+                            med_threshold = 1.25
+                            
+                        if avg_smash < low_threshold:
                             priority_areas.append("Smash Factor")
                             recommendations.append({
                                 "icon": "⚡",
                                 "title": "Improve Smash Factor (Priority)",
                                 "issue": f"Your average smash factor is {avg_smash:.3f}, below optimal range",
                                 "solution": "Focus on center face contact. Practice with impact tape or use alignment sticks for consistent setup.",
-                                "target": "Target: 1.25-1.35 range"
+                                "target": f"Target: {good_range} range"
                             })
-                        elif avg_smash < 1.25:
+                        elif avg_smash < med_threshold:
                             recommendations.append({
                                 "icon": "⚡",
                                 "title": "Optimize Smash Factor",
                                 "issue": f"Your smash factor of {avg_smash:.3f} has room for improvement",
                                 "solution": "Work on consistent ball striking. Check your grip pressure and swing tempo.",
-                                "target": "Target: 1.30+ for maximum efficiency"
+                                "target": f"Target: {efficiency_target}"
                             })
                     
                     # Distance Consistency
@@ -1778,10 +1818,17 @@ if uploaded_files:
                                 
                                 # Add optimal zones for golf-specific metrics
                                 if col == 'Smash Factor':
-                                    fig.add_hline(y=1.30, line_dash="dot", line_color="green", 
-                                                annotation_text="Optimal (1.30)", annotation_position="bottom right")
-                                    fig.add_hrect(y0=1.25, y1=1.35, fillcolor="green", opacity=0.1, 
-                                                annotation_text="Optimal Range", annotation_position="top left")
+                                    # Club-specific optimal zones
+                                    if 'Driver' in title_suffix:
+                                        fig.add_hline(y=1.50, line_dash="dot", line_color="green", 
+                                                    annotation_text="Optimal (1.50)", annotation_position="bottom right")
+                                        fig.add_hrect(y0=1.45, y1=1.55, fillcolor="green", opacity=0.1, 
+                                                    annotation_text="Driver Optimal Range", annotation_position="top left")
+                                    else:
+                                        fig.add_hline(y=1.30, line_dash="dot", line_color="green", 
+                                                    annotation_text="Optimal (1.30)", annotation_position="bottom right")
+                                        fig.add_hrect(y0=1.25, y1=1.35, fillcolor="green", opacity=0.1, 
+                                                    annotation_text="Optimal Range", annotation_position="top left")
                                 elif col == 'Launch Angle':
                                     # Optimal launch angle varies by club - add general guidance
                                     if 'Driver' in title_suffix:
