@@ -1284,13 +1284,54 @@ if uploaded_files:
                                 x_positions = lateral_distances  # Lateral dispersion
                                 y_positions = carry_distances    # Distance downrange
                                 
-                                # Color code by smash factor if available
-                                if 'Smash Factor' in club_df.columns and len(club_df['Smash Factor'].dropna()) >= min_length:
+                                # Color code by different metrics - prioritize spin data when available
+                                color_data = None
+                                color_title = ""
+                                colorscale = 'Viridis'
+                                marker_config = {}
+                                
+                                # First priority: Total Spin (if available)
+                                if 'Total Spin' in club_df.columns and len(club_df['Total Spin'].dropna()) >= min_length:
+                                    total_spin = club_df['Total Spin'].dropna().iloc[:min_length]
+                                    color_data = total_spin
+                                    color_title = "Total Spin (rpm)"
+                                    colorscale = 'Plasma'
+                                    marker_config = dict(
+                                        size=10,
+                                        color=color_data,
+                                        colorscale=colorscale,
+                                        colorbar=dict(
+                                            title=color_title,
+                                            tickformat=",d"
+                                        ),
+                                        cmin=min(total_spin) * 0.9,
+                                        cmax=max(total_spin) * 1.1,
+                                        line=dict(width=1, color='black')
+                                    )
+                                # Second priority: Backspin (if available)
+                                elif 'Backspin' in club_df.columns and len(club_df['Backspin'].dropna()) >= min_length:
+                                    backspin = club_df['Backspin'].dropna().iloc[:min_length]
+                                    color_data = backspin
+                                    color_title = "Backspin (rpm)"
+                                    colorscale = 'Viridis'
+                                    marker_config = dict(
+                                        size=10,
+                                        color=color_data,
+                                        colorscale=colorscale,
+                                        colorbar=dict(
+                                            title=color_title,
+                                            tickformat=",d"
+                                        ),
+                                        cmin=min(backspin) * 0.9,
+                                        cmax=max(backspin) * 1.1,
+                                        line=dict(width=1, color='black')
+                                    )
+                                # Third priority: Smash Factor (existing logic)
+                                elif 'Smash Factor' in club_df.columns and len(club_df['Smash Factor'].dropna()) >= min_length:
                                     smash_factors = club_df['Smash Factor'].dropna().iloc[:min_length]
                                     color_data = smash_factors
                                     color_title = "Smash Factor"
                                     colorscale = 'Viridis'
-                                    # Set proper scale for smash factor
                                     marker_config = dict(
                                         size=10,
                                         color=color_data,
@@ -1301,15 +1342,15 @@ if uploaded_files:
                                             tickvals=[0, 0.5, 1.0, 1.3, 1.5, 1.7],
                                             ticktext=["0", "0.5", "1.0", "1.3", "1.5", "1.7"]
                                         ),
-                                        cmin=0,  # Minimum color scale value
-                                        cmax=1.7,  # Maximum color scale value
+                                        cmin=0,
+                                        cmax=1.7,
                                         line=dict(width=1, color='black')
                                     )
                                 else:
+                                    # Default: Shot numbers
                                     color_data = list(range(min_length))
                                     color_title = "Shot Number"
                                     colorscale = 'Blues'
-                                    # Default marker config for shot numbers
                                     marker_config = dict(
                                         size=10,
                                         color=color_data,
@@ -1318,14 +1359,37 @@ if uploaded_files:
                                         line=dict(width=1, color='black')
                                     )
                                 
+                                # Prepare comprehensive hover text with spin data
+                                hover_texts = []
+                                for i, (dist, lat, direction) in enumerate(zip(carry_distances, lateral_distances, launch_directions)):
+                                    hover_text = f'Shot {i+1}<br>Distance: {dist:.1f}{get_distance_unit_label(use_usa_units)}<br>Lateral: {lat:.1f}{get_distance_unit_label(use_usa_units)}<br>Direction: {direction:.1f}°'
+                                    
+                                    # Add spin data to hover text if available
+                                    if 'Total Spin' in club_df.columns and len(club_df['Total Spin'].dropna()) > i:
+                                        total_spin_val = club_df['Total Spin'].dropna().iloc[i]
+                                        hover_text += f'<br>Total Spin: {total_spin_val:,.0f} rpm'
+                                    
+                                    if 'Backspin' in club_df.columns and len(club_df['Backspin'].dropna()) > i:
+                                        backspin_val = club_df['Backspin'].dropna().iloc[i]
+                                        hover_text += f'<br>Backspin: {backspin_val:,.0f} rpm'
+                                    
+                                    if 'Sidespin' in club_df.columns and len(club_df['Sidespin'].dropna()) > i:
+                                        sidespin_val = club_df['Sidespin'].dropna().iloc[i]
+                                        hover_text += f'<br>Sidespin: {sidespin_val:+,.0f} rpm'
+                                    
+                                    if 'Smash Factor' in club_df.columns and len(club_df['Smash Factor'].dropna()) > i:
+                                        smash_val = club_df['Smash Factor'].dropna().iloc[i]
+                                        hover_text += f'<br>Smash Factor: {smash_val:.3f}'
+                                    
+                                    hover_texts.append(hover_text)
+                                
                                 # Add shot scatter plot
                                 fig_range.add_trace(go.Scatter(
                                     x=x_positions,
                                     y=y_positions,
                                     mode='markers',
                                     marker=marker_config,
-                                    text=[f'Shot {i+1}<br>Distance: {dist:.1f}{get_distance_unit_label(use_usa_units)}<br>Lateral: {lat:.1f}{get_distance_unit_label(use_usa_units)}<br>Direction: {direction:.1f}°' 
-                                          for i, (dist, lat, direction) in enumerate(zip(carry_distances, lateral_distances, launch_directions))],
+                                    text=hover_texts,
                                     hovertemplate='%{text}<extra></extra>',
                                     name='Shots'
                                 ))
@@ -1339,6 +1403,41 @@ if uploaded_files:
                                     line=dict(color='red', width=3, dash='dash'),
                                     name='Target Line',
                                     hoverinfo='skip'
+                                ))
+                                
+                                # Add fairway boundaries (±30 meters)
+                                fairway_width = 30 if not use_usa_units else 30 * 1.09361  # Convert to yards if needed
+                                
+                                # Left fairway boundary
+                                fig_range.add_trace(go.Scatter(
+                                    x=[-fairway_width, -fairway_width],
+                                    y=[0, max_distance],
+                                    mode='lines',
+                                    line=dict(color='green', width=2, dash='dot'),
+                                    name='Fairway Edge (-30m)',
+                                    hoverinfo='skip'
+                                ))
+                                
+                                # Right fairway boundary
+                                fig_range.add_trace(go.Scatter(
+                                    x=[fairway_width, fairway_width],
+                                    y=[0, max_distance],
+                                    mode='lines',
+                                    line=dict(color='green', width=2, dash='dot'),
+                                    name='Fairway Edge (+30m)',
+                                    hoverinfo='skip'
+                                ))
+                                
+                                # Add fairway zone shading
+                                fig_range.add_trace(go.Scatter(
+                                    x=[-fairway_width, fairway_width, fairway_width, -fairway_width, -fairway_width],
+                                    y=[0, 0, max_distance, max_distance, 0],
+                                    fill='toself',
+                                    fillcolor='rgba(0, 255, 0, 0.1)',  # Light green with transparency
+                                    mode='none',
+                                    name='Fairway Zone (±30m)',
+                                    hoverinfo='skip',
+                                    showlegend=True
                                 ))
                                 
                                 # Add range markers every 50m
@@ -1396,7 +1495,7 @@ if uploaded_files:
                                 st.plotly_chart(fig_range, use_container_width=True)
                                 
                                 # Dispersion statistics
-                                dispersion_cols = st.columns(4)
+                                dispersion_cols = st.columns(5)  # Changed from 4 to 5 columns
                                 
                                 with dispersion_cols[0]:
                                     # Apply unit conversion to average distance
@@ -1415,6 +1514,14 @@ if uploaded_files:
                                     st.metric("Distance Consistency", f"±{distance_std_display:.1f}{distance_unit}")
                                     
                                 with dispersion_cols[2]:
+                                    # Calculate fairway hit percentage
+                                    fairway_boundary = 30 if not use_usa_units else 30 * 1.09361  # Convert to yards if needed
+                                    fairway_hits = sum(1 for x in x_positions if abs(x) <= fairway_boundary)
+                                    fairway_percentage = (fairway_hits / len(x_positions)) * 100
+                                    st.metric("Fairway Hit %", f"{fairway_percentage:.1f}%", 
+                                             help="Percentage of shots within ±30m fairway boundary")
+                                    
+                                with dispersion_cols[3]:
                                     # Apply unit conversion to lateral average
                                     avg_lateral_display = avg_lateral
                                     if use_usa_units:
@@ -1422,7 +1529,7 @@ if uploaded_files:
                                     distance_unit = get_distance_unit_label(use_usa_units)
                                     st.metric("Average Lateral", f"{avg_lateral_display:+.1f}{distance_unit}")
                                     
-                                with dispersion_cols[3]:
+                                with dispersion_cols[4]:
                                     # Apply unit conversion to lateral spread
                                     lateral_std_display = lateral_std
                                     if use_usa_units:
@@ -1433,7 +1540,7 @@ if uploaded_files:
                                 # Dispersion analysis
                                 st.markdown("### 📊 Shot Dispersion Analysis")
                                 
-                                analysis_cols = st.columns(2)
+                                analysis_cols = st.columns(3)  # Changed from 2 to 3 columns for spin analysis
                                 
                                 with analysis_cols[0]:
                                     # Distance consistency
@@ -1457,14 +1564,92 @@ if uploaded_files:
                                     else:
                                         st.error(f"⚠️ **Work on accuracy** - Significant directional issues ({avg_lateral:+.1f}m ±{lateral_std:.1f}m)")
                                 
+                                with analysis_cols[2]:
+                                    # Spin analysis (if available)
+                                    spin_data_available = False
+                                    if 'Backspin' in club_df.columns and club_df['Backspin'].notna().any():
+                                        spin_data_available = True
+                                        avg_backspin = club_df['Backspin'].dropna().iloc[:min_length].mean()
+                                        backspin_std = club_df['Backspin'].dropna().iloc[:min_length].std()
+                                        
+                                        # Backspin analysis (driver-specific ranges)
+                                        if 'Driver' in title_suffix:
+                                            if 2200 <= avg_backspin <= 2800:
+                                                st.success(f"🌪️ **Optimal backspin** - {avg_backspin:.0f} rpm (ideal for distance)")
+                                            elif avg_backspin > 3000:
+                                                st.warning(f"⬆️ **High backspin** - {avg_backspin:.0f} rpm (reducing distance)")
+                                            elif avg_backspin < 2000:
+                                                st.info(f"⬇️ **Low backspin** - {avg_backspin:.0f} rpm (may need more)")
+                                            else:
+                                                st.info(f"🌪️ **Backspin: {avg_backspin:.0f} rpm** (±{backspin_std:.0f})")
+                                        else:
+                                            st.info(f"🌪️ **Backspin: {avg_backspin:.0f} rpm** (±{backspin_std:.0f})")
+                                    
+                                    elif 'Total Spin' in club_df.columns and club_df['Total Spin'].notna().any():
+                                        spin_data_available = True
+                                        avg_total_spin = club_df['Total Spin'].dropna().iloc[:min_length].mean()
+                                        total_spin_std = club_df['Total Spin'].dropna().iloc[:min_length].std()
+                                        st.info(f"🌪️ **Total Spin: {avg_total_spin:.0f} rpm** (±{total_spin_std:.0f})")
+                                    
+                                    if not spin_data_available:
+                                        st.info("🌪️ **No spin data** - Consider tracking spin for distance optimization")
+                                
                                 # Practice recommendations based on dispersion
-                                st.info(f"""
+                                fairway_boundary = 30 if not use_usa_units else 30 * 1.09361
+                                fairway_hits = sum(1 for x in x_positions if abs(x) <= fairway_boundary)
+                                fairway_percentage = (fairway_hits / len(x_positions)) * 100
+                                
+                                # Fairway performance analysis
+                                if fairway_percentage >= 80:
+                                    fairway_status = "🔥 **Excellent fairway finder**"
+                                    fairway_color = "success"
+                                elif fairway_percentage >= 65:
+                                    fairway_status = "👍 **Good fairway accuracy**"
+                                    fairway_color = "info"
+                                elif fairway_percentage >= 50:
+                                    fairway_status = "📊 **Moderate fairway accuracy**"
+                                    fairway_color = "warning"
+                                else:
+                                    fairway_status = "⚠️ **Work on fairway accuracy**"
+                                    fairway_color = "error"
+                                
+                                # Display fairway analysis
+                                if fairway_color == "success":
+                                    st.success(f"{fairway_status} - {fairway_percentage:.1f}% of shots in fairway")
+                                elif fairway_color == "info":
+                                    st.info(f"{fairway_status} - {fairway_percentage:.1f}% of shots in fairway")
+                                elif fairway_color == "warning":
+                                    st.warning(f"{fairway_status} - {fairway_percentage:.1f}% of shots in fairway")
+                                else:
+                                    st.error(f"{fairway_status} - {fairway_percentage:.1f}% of shots in fairway")
+                                
+                                # Build comprehensive insights text with spin data
+                                insights_text = f"""
                                 **🎯 Dispersion Insights:**
                                 - **Your shots cluster around {avg_distance:.0f}m** with ±{distance_std:.1f}m variation
                                 - **Lateral bias**: {avg_lateral:+.1f}m ({'right' if avg_lateral > 0 else 'left' if avg_lateral < 0 else 'centered'})
                                 - **Shot spread**: ±{lateral_std:.1f}m lateral dispersion
-                                - **Target area**: 68% of shots within the displayed pattern
-                                """)
+                                - **Fairway performance**: {fairway_percentage:.1f}% within ±30m fairway boundary"""
+                                
+                                # Add spin insights if available
+                                if 'Backspin' in club_df.columns and club_df['Backspin'].notna().any():
+                                    avg_backspin = club_df['Backspin'].dropna().iloc[:min_length].mean()
+                                    backspin_std = club_df['Backspin'].dropna().iloc[:min_length].std()
+                                    insights_text += f"\n                                - **Backspin**: {avg_backspin:.0f} rpm (±{backspin_std:.0f}) - strong correlation to distance"
+                                
+                                if 'Sidespin' in club_df.columns and club_df['Sidespin'].notna().any():
+                                    avg_sidespin = club_df['Sidespin'].dropna().iloc[:min_length].mean()
+                                    sidespin_std = club_df['Sidespin'].dropna().iloc[:min_length].std()
+                                    insights_text += f"\n                                - **Sidespin**: {avg_sidespin:+.0f} rpm (±{sidespin_std:.0f}) - affects lateral dispersion"
+                                
+                                if 'Total Spin' in club_df.columns and club_df['Total Spin'].notna().any():
+                                    avg_total_spin = club_df['Total Spin'].dropna().iloc[:min_length].mean()
+                                    total_spin_std = club_df['Total Spin'].dropna().iloc[:min_length].std()
+                                    insights_text += f"\n                                - **Total Spin**: {avg_total_spin:.0f} rpm (±{total_spin_std:.0f}) - overall spin rate"
+                                
+                                insights_text += "\n                                - **Target area**: 68% of shots within the displayed pattern"
+                                
+                                st.info(insights_text)
                             
                             else:
                                 st.warning("Not enough overlapping data points for dispersion visualization")
