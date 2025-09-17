@@ -3102,26 +3102,119 @@ if uploaded_files:
                     for label, col, unit in spin_stats:
                         if col in club_df.columns and club_df[col].notna().any():
                             fig = go.Figure()
+                            
+                            # Get data for trend line calculation
+                            x_data = club_df['Club Shot Number'].dropna()
+                            y_data = club_df[col].dropna()
+                            
+                            # Ensure same length for trend calculation
+                            min_length = min(len(x_data), len(y_data))
+                            if min_length > 1:
+                                x_trend = x_data.iloc[:min_length]
+                                y_trend = y_data.iloc[:min_length]
+                                
+                                # Calculate trend line using numpy
+                                import numpy as np
+                                z = np.polyfit(x_trend, y_trend, 1)
+                                p = np.poly1d(z)
+                                
+                                # Add trend line
+                                fig.add_trace(go.Scatter(
+                                    x=x_trend,
+                                    y=p(x_trend),
+                                    mode='lines',
+                                    name=f'{label} Trend',
+                                    line=dict(color='red', width=2, dash='dash'),
+                                    hovertemplate=f'Trend: %{{y:.0f}} {unit}<extra></extra>'
+                                ))
+                            
+                            # Add main data trace
                             fig.add_trace(go.Scatter(
                                 x=club_df['Club Shot Number'],
                                 y=club_df[col],
                                 mode='lines+markers',
                                 name=label,
                                 line=dict(width=2),
-                                marker=dict(size=4)
+                                marker=dict(size=6),
+                                hovertemplate=f'Shot %{{x}}<br>{label}: %{{y:.0f}} {unit}<extra></extra>'
                             ))
                             
-                            # Add consistency bands
-                            if col == 'Sidespin':
-                                fig.add_hrect(y0=-300, y1=300, fillcolor="green", opacity=0.1, 
-                                            annotation_text="Straight Shot Zone", annotation_position="top left")
+                            # Add sweet spot zones and optimal ranges
+                            if col == 'Backspin':
+                                if 'Driver' in title_suffix:
+                                    # Driver optimal backspin zone (2200-2800 rpm)
+                                    fig.add_hrect(y0=2200, y1=2800, fillcolor="green", opacity=0.15, 
+                                                annotation_text="Driver Sweet Spot (2200-2800 rpm)", 
+                                                annotation_position="top left")
+                                    # Warning zones
+                                    fig.add_hrect(y0=2800, y1=3500, fillcolor="orange", opacity=0.1, 
+                                                annotation_text="High Spin Zone", annotation_position="bottom left")
+                                    fig.add_hrect(y0=1500, y1=2200, fillcolor="yellow", opacity=0.1, 
+                                                annotation_text="Low Spin Zone", annotation_position="bottom left")
+                                elif any(iron in title_suffix for iron in ['7 Iron', '6 Iron', '8 Iron', '9 Iron', '5 Iron', '4 Iron']):
+                                    # Iron optimal backspin zone (5000-7000 rpm)
+                                    fig.add_hrect(y0=5000, y1=7000, fillcolor="green", opacity=0.15, 
+                                                annotation_text="Iron Sweet Spot (5000-7000 rpm)", 
+                                                annotation_position="top left")
+                                    # Warning zones
+                                    fig.add_hrect(y0=7000, y1=9000, fillcolor="orange", opacity=0.1, 
+                                                annotation_text="High Spin Zone", annotation_position="bottom left")
+                                    fig.add_hrect(y0=3000, y1=5000, fillcolor="yellow", opacity=0.1, 
+                                                annotation_text="Low Spin Zone", annotation_position="bottom left")
+                                elif any(wedge in title_suffix for wedge in ['Wedge', 'SW', 'LW', 'GW', 'PW']):
+                                    # Wedge optimal backspin zone (8000-12000 rpm)
+                                    fig.add_hrect(y0=8000, y1=12000, fillcolor="green", opacity=0.15, 
+                                                annotation_text="Wedge Sweet Spot (8000-12000 rpm)", 
+                                                annotation_position="top left")
+                                    # Warning zones  
+                                    fig.add_hrect(y0=12000, y1=15000, fillcolor="orange", opacity=0.1, 
+                                                annotation_text="High Spin Zone", annotation_position="bottom left")
+                                    fig.add_hrect(y0=5000, y1=8000, fillcolor="yellow", opacity=0.1, 
+                                                annotation_text="Low Spin Zone", annotation_position="bottom left")
+                            
+                            elif col == 'Sidespin':
+                                # Sidespin sweet spot zone (minimal sidespin for straight shots)
+                                fig.add_hrect(y0=-300, y1=300, fillcolor="green", opacity=0.15, 
+                                            annotation_text="Sweet Spot Zone (±300 rpm)", annotation_position="top left")
+                                # Moderate zones
+                                fig.add_hrect(y0=-800, y1=-300, fillcolor="yellow", opacity=0.1, 
+                                            annotation_text="Draw Zone", annotation_position="bottom left")
+                                fig.add_hrect(y0=300, y1=800, fillcolor="yellow", opacity=0.1, 
+                                            annotation_text="Fade Zone", annotation_position="bottom right")
+                                # Extreme zones
+                                fig.add_hrect(y0=-2000, y1=-800, fillcolor="orange", opacity=0.1, 
+                                            annotation_text="Strong Draw/Hook", annotation_position="bottom left")
+                                fig.add_hrect(y0=800, y1=2000, fillcolor="orange", opacity=0.1, 
+                                            annotation_text="Strong Fade/Slice", annotation_position="bottom right")
+                                # Add centerline
+                                fig.add_hline(y=0, line_dash="dot", line_color="red", 
+                                            annotation_text="Straight", annotation_position="right")
+                            
+                            elif col == 'Spin Rate':
+                                # Total spin rate guidance (varies significantly by club)
+                                avg_spin = y_data.mean()
+                                spin_std = y_data.std()
+                                # Add consistency bands
+                                fig.add_hrect(y0=avg_spin - spin_std, y1=avg_spin + spin_std, 
+                                            fillcolor="green", opacity=0.1, 
+                                            annotation_text="Consistency Zone (±1σ)", annotation_position="top left")
+                                fig.add_hline(y=avg_spin, line_dash="dot", line_color="blue", 
+                                            annotation_text=f"Average ({avg_spin:.0f} rpm)", annotation_position="right")
+                            
+                            # Calculate variance for consistency rating
+                            spin_variance = y_data.var()
+                            spin_std = y_data.std()
+                            consistency_rating, consistency_icon = get_consistency_rating(spin_std, 'spin')
+                            variance_display = format_variance_display(spin_variance, 'spin', use_usa_units)
                             
                             fig.update_layout(
-                                title=f"{label} Trend",
+                                title=f"{label} Trend - {consistency_rating} {consistency_icon} (σ²: {variance_display})",
                                 xaxis_title=f"{title_suffix} Shot Number",
                                 yaxis_title=f"{label} ({unit})",
-                                height=350,
-                                xaxis=get_smart_xaxis_config(len(club_df))  # Smart axis configuration
+                                height=400,
+                                xaxis=get_smart_xaxis_config(len(club_df)),
+                                showlegend=True,
+                                legend=dict(x=0.02, y=0.98)
                             )
                             st.plotly_chart(fig, use_container_width=True)
 
